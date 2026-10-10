@@ -1,0 +1,10 @@
+.env
+runtime/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.sqlite3*
+dist/
+coverage/
+playwright-report/

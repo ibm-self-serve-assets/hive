@@ -1,0 +1,33 @@
+{
+  "workshop_id": "hive-workshop-001",
+  "connection_profiles": {
+    "workshop-cluster": {
+      "bootstrap_servers": "pkc-abcde.us-east-1.aws.confluent.cloud:9092",
+      "security_protocol": "SASL_SSL",
+      "sasl_mechanism": "PLAIN"
+    },
+    "local-cluster": {
+      "bootstrap_servers": "localhost:9092",
+      "security_protocol": "PLAINTEXT",
+      "sasl_mechanism": "PLAIN"
+    }
+  },
+  "enrollments": [
+    {
+      "attendee_id": "attendee-001",
+      "token_hash": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+      "connection_profile_id": "workshop-cluster",
+      "topic_prefix": "hive.workshop-001.attendee-001",
+      "consumer_group_prefix": "hive-cg-attendee-001",
+      "expires_at": "2030-01-01T00:00:00Z"
+    },
+    {
+      "attendee_id": "attendee-test",
+      "token_hash": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "connection_profile_id": "local-cluster",
+      "topic_prefix": "hive.test.attendee-test",
+      "consumer_group_prefix": "hive-cg-attendee-test",
+      "expires_at": "2030-01-01T00:00:00Z"
+    }
+  ]
+}

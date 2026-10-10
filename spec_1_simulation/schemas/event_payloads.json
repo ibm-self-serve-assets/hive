@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.example.com/schemas/events.json",
+  "definitions": {
+    "connection_test": {
+      "type": "object",
+      "required": ["operation_id", "probe"],
+      "properties": {
+        "operation_id": { "type": "string", "format": "uuid" },
+        "probe": { "type": "boolean", "const": true }
+      },
+      "additionalProperties": false
+    },
+    "resource_delivered": {
+      "type": "object",
+      "required": ["delivery_id", "delivery_sequence", "resources"],
+      "properties": {
+        "delivery_id": { "type": "string", "format": "uuid" },
+        "delivery_sequence": { "type": "integer", "minimum": 1 },
+        "resources": {
+          "type": "object",
+          "required": ["resin", "silicon", "metals", "copper", "energy"],
+          "properties": {
+            "resin": { "type": "integer", "minimum": 0 },
+            "silicon": { "type": "integer", "minimum": 0 },
+            "metals": { "type": "integer", "minimum": 0 },
+            "copper": { "type": "integer", "minimum": 0 },
+            "energy": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "job_started": {
+      "type": "object",
+      "required": ["job_id", "station_id", "output_id", "inputs", "duration_ms"],
+      "properties": {
+        "job_id": { "type": "string", "format": "uuid" },
+        "station_id": {
+          "type": "string",
+          "enum": [
+            "structural_molding",
+            "electronics_assembly",
+            "actuator_fabrication",
+            "battery_assembly",
+            "worker_assembly"
+          ]
+        },
+        "output_id": {
+          "type": "string",
+          "enum": ["chassis", "electronics", "actuator", "battery", "worker"]
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "duration_ms": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "part_produced": {
+      "type": "object",
+      "required": ["job_id", "station_id", "part_id", "quantity"],
+      "properties": {
+        "job_id": { "type": "string", "format": "uuid" },
+        "station_id": {
+          "type": "string",
+          "enum": [
+            "structural_molding",
+            "electronics_assembly",
+            "actuator_fabrication",
+            "battery_assembly"
+          ]
+        },
+        "part_id": {
+          "type": "string",
+          "enum": ["chassis", "electronics", "actuator", "battery"]
+        },
+        "quantity": { "type": "integer", "const": 1 }
+      },
+      "additionalProperties": false
+    },
+    "robot_assembled": {
+      "type": "object",
+      "required": ["job_id", "robot_id", "robot_type", "display_number", "quantity"],
+      "properties": {
+        "job_id": { "type": "string", "format": "uuid" },
+        "robot_id": { "type": "string", "format": "uuid" },
+        "robot_type": { "type": "string", "const": "worker" },
+        "display_number": { "type": "integer", "minimum": 1 },
+        "quantity": { "type": "integer", "const": 1 }
+      },
+      "additionalProperties": false
+    },
+    "factory_state": {
+      "type": "object",
+      "required": [
+        "lifecycle_status",
+        "running",
+        "operational_error",
+        "speed",
+        "next_delivery_sim_time_ms",
+        "next_delivery_in_ms",
+        "resources",
+        "parts",
+        "stations",
+        "completed_workers",
+        "last_applied_command_id"
+      ],
+      "properties": {
+        "lifecycle_status": {
+          "type": "string",
+          "enum": ["paused", "running", "stopped", "expired"]
+        },
+        "running": { "type": "boolean" },
+        "operational_error": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["code", "message"],
+              "properties": {
+                "code": { "type": "string" },
+                "message": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "speed": { "type": "integer", "enum": [1, 5] },
+        "next_delivery_sim_time_ms": { "type": "integer", "minimum": 0 },
+        "next_delivery_in_ms": { "type": "integer", "minimum": 0 },
+        "resources": {
+          "type": "object",
+          "required": ["resin", "silicon", "metals", "copper", "energy"],
+          "properties": {
+            "resin": { "type": "integer", "minimum": 0 },
+            "silicon": { "type": "integer", "minimum": 0 },
+            "metals": { "type": "integer", "minimum": 0 },
+            "copper": { "type": "integer", "minimum": 0 },
+            "energy": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "parts": {
+          "type": "object",
+          "required": ["chassis", "electronics", "actuator", "battery"],
+          "properties": {
+            "chassis": { "type": "integer", "minimum": 0 },
+            "electronics": { "type": "integer", "minimum": 0 },
+            "actuator": { "type": "integer", "minimum": 0 },
+            "battery": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "stations": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["station_id", "status", "missing_inputs", "job"],
+            "properties": {
+              "station_id": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["idle", "working", "waiting_for_resources", "waiting_for_parts"]
+              },
+              "missing_inputs": {
+                "type": "object",
+                "additionalProperties": { "type": "integer", "minimum": 1 }
+              },
+              "job": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "required": [
+                      "job_id",
+                      "output_id",
+                      "started_at_sim_ms",
+                      "completes_at_sim_ms",
+                      "duration_ms",
+                      "consumed_inputs",
+                      "progress_percent"
+                    ],
+                    "properties": {
+                      "job_id": { "type": "string", "format": "uuid" },
+                      "output_id": { "type": "string" },
+                      "started_at_sim_ms": { "type": "integer", "minimum": 0 },
+                      "completes_at_sim_ms": { "type": "integer", "minimum": 0 },
+                      "duration_ms": { "type": "integer", "minimum": 1 },
+                      "consumed_inputs": { "type": "object" },
+                      "progress_percent": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 100.0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "completed_workers": {
+          "type": "object",
+          "required": ["count", "last_robot_id"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "last_robot_id": {
+              "type": ["string", "null"],
+              "format": "uuid"
+            }
+          },
+          "additionalProperties": false
+        },
+        "last_applied_command_id": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

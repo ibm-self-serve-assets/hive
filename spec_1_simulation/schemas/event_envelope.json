@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.example.com/schemas/event-envelope.json",
+  "title": "EventEnvelope",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "factory_id",
+    "server_epoch",
+    "run_id",
+    "run_generation",
+    "event_sequence",
+    "state_revision",
+    "occurred_at",
+    "sim_time_ms",
+    "causation_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "factory_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "server_epoch": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "run_generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "state_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sim_time_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "causation_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

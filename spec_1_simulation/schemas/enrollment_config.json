@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hive.example.com/schemas/enrollment-config.json",
+  "title": "EnrollmentConfig",
+  "type": "object",
+  "required": [
+    "workshop_id",
+    "connection_profiles",
+    "enrollments"
+  ],
+  "properties": {
+    "workshop_id": { "type": "string" },
+    "connection_profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "bootstrap_servers",
+          "security_protocol",
+          "sasl_mechanism"
+        ],
+        "properties": {
+          "bootstrap_servers": { "type": "string" },
+          "security_protocol": {
+            "type": "string",
+            "enum": ["SASL_SSL", "PLAINTEXT", "SASL_PLAINTEXT", "SSL"]
+          },
+          "sasl_mechanism": {
+            "type": "string",
+            "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "enrollments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "attendee_id",
+          "token_hash",
+          "connection_profile_id",
+          "topic_prefix",
+          "consumer_group_prefix",
+          "expires_at"
+        ],
+        "properties": {
+          "attendee_id": { "type": "string" },
+          "token_hash": { "type": "string" },
+          "connection_profile_id": { "type": "string" },
+          "topic_prefix": { "type": "string" },
+          "consumer_group_prefix": { "type": "string" },
+          "expires_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
