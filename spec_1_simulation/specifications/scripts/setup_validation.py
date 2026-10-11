@@ -45,11 +45,6 @@ def main():
 
     # 3. Environment configuration check
     env_file = Path(__file__).resolve().parent.parent.parent / ".env"
-    sample_enrollment = schemas_dir / "sample_enrollment.json"
-
-    # Test loading config
-    if not os.environ.get("ENROLLMENT_CONFIG_PATH") and sample_enrollment.exists():
-        os.environ["ENROLLMENT_CONFIG_PATH"] = str(sample_enrollment)
 
     try:
         config = ServerConfig.load_from_env(str(env_file) if env_file.exists() else None)
@@ -63,8 +58,8 @@ def main():
         print(f"    - SNAPSHOT_INTERVAL_MILLISECONDS: {config.snapshot_interval_milliseconds}")
 
         # Test enrollment config loading
-        enrollment_cfg = load_enrollment_config(config.enrollment_config_path)
-        print(f"[+] Enrollment config validated: workshop_id={enrollment_cfg.workshop_id}, {len(enrollment_cfg.enrollments)} enrollments, {len(enrollment_cfg.connection_profiles)} connection profiles.")
+        enrollment_cfg = load_enrollment_config()
+        print(f"[+] Attendee config validated: workshop_id={enrollment_cfg.workshop_id}, {len(enrollment_cfg.enrollments)} attendee(s).")
     except Exception as e:
         errors.append(f"Configuration validation failed: {e}")
 

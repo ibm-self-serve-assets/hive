@@ -1,6 +1,9 @@
 import React from 'react';
 import { FactorySnapshot } from '../types';
 
+// Provisioning states the sim server can return before factory is usable
+const PROVISIONING_STATUSES = new Set(['provisioning', 'pending']);
+
 interface SidebarProps {
   snapshot: FactorySnapshot | null;
   simTimeMs: number;
@@ -31,6 +34,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isStopped = lifecycleStatus === 'stopped';
   const isExpired = lifecycleStatus === 'expired';
   const hasSnapshot = snapshot !== null;
+  // Factory exists but probe writes are still in progress — block all commands
+  const isProvisioning = !hasSnapshot || PROVISIONING_STATUSES.has(lifecycleStatus);
 
   const handleLeftButton = () => {
     if (isRunning) {
@@ -52,10 +57,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* ── Simulation controls ── */}
         <section>
           <h2 className="text-xs font-bold text-white mb-3">Simulation controls</h2>
+          {isProvisioning && (
+            <div className="mb-3 px-3 py-2 rounded text-xs text-[#8AA0D0] border border-[#1A2760] bg-[#0C1A52] leading-snug">
+              Factory provisioning — Confluent probe writes in progress. Controls will unlock shortly.
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={handleLeftButton}
-              disabled={isCommandPending || isExpired}
+              disabled={isCommandPending || isExpired || isProvisioning}
               className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {isRunning ? (
@@ -94,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={s}
                 onClick={() => onSendCommand('speed', { speed: s })}
-                disabled={isCommandPending}
+                disabled={isCommandPending || isProvisioning}
                 className={`py-1.5 rounded text-sm font-bold transition disabled:opacity-40 ${
                   speed === s
                     ? 'bg-[#2850B8] text-white'

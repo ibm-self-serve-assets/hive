@@ -82,6 +82,14 @@ const PART_INVENTORY: Array<{ key: keyof FactorySnapshot['parts']; label: string
   { key: 'actuator',    label: 'Actuators',   src: '/icons/parts-inventory__actuators__servo.png' },
 ];
 
+// Worker assembly recipe — parts required to build one worker robot
+const WORKER_RECIPE: Array<{ key: keyof FactorySnapshot['parts']; src: string; qty: number }> = [
+  { key: 'chassis',     src: '/icons/parts-inventory__chassis__head-shell.png',  qty: 1 },
+  { key: 'electronics', src: '/icons/parts-inventory__electronics__board.png',   qty: 3 },
+  { key: 'battery',     src: '/icons/parts-inventory__batteries__battery.png',   qty: 2 },
+  { key: 'actuator',    src: '/icons/parts-inventory__actuators__servo.png',      qty: 8 },
+];
+
 interface StationRowProps {
   stationId: string;
   station: StationState | undefined;
@@ -279,21 +287,18 @@ export const ManufacturingFloor: React.FC<ManufacturingFloorProps> = ({ snapshot
                 <div className="flex justify-end mt-1">
                   <span className="text-sm font-bold text-[#031040] tabular-nums">{Math.round(workerProgress)}%</span>
                 </div>
-                {workerIsWorking && (
-                  <div className="text-xs text-[#57606a] mt-1">Assembly in progress</div>
-                )}
               </div>
             </div>
-            {!workerIsWorking && workerStation?.status !== 'waiting_for_parts' && (
-              <div className="text-xs text-[#57606a]">
-                Idle — awaiting parts
-              </div>
-            )}
-            {workerStation?.status === 'waiting_for_parts' && (
-              <div className="text-xs text-[#57606a]">
-                Next build starts when parts are available
-              </div>
-            )}
+            {/* Parts recipe inputs — same pattern as StationRow resource inputs */}
+            <div className="resource-input flex items-center gap-2 mt-2 flex-wrap">
+              {WORKER_RECIPE.map(({ key, src, qty }, i) => (
+                <React.Fragment key={key}>
+                  {i > 0 && <span style={{ color: '#9aa3b0' }}>+</span>}
+                  <img src={src} alt={key} style={{ width: 30, height: 30, objectFit: 'contain', filter: 'grayscale(100%)' }} />
+                  <span className="text-s text-[#57606a]">× {qty}</span>
+                </React.Fragment>
+              ))}
+            </div>
           </div>
 
           <div>

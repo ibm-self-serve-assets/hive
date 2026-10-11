@@ -15,7 +15,6 @@ The .env and .env.example files use the same configuration names. For local deve
 | Variable | Default | Purpose and behavior |
 | --- | --- | --- |
 | PORT | 8080 | HTTP port inside the container. Bind the service to 0.0.0.0 inside the container so the platform can reach it. |
-| ENROLLMENT_CONFIG_PATH | Must be supplied | Path to organizer-prepared configuration containing attendee token hashes, workshop/attendee IDs, approved connection profiles, exact topic namespaces, consumer-group prefixes and enrollment expiry. Load and validate it at startup. This is a file/configuration input, not a database. |
 | MAX_FACTORIES | 25 | Maximum resident, non-expired factory instances across the server, including provisioning, paused, running, stopped and failed-provisioning instances. Reject additional creation with 429 capacity_reached. The one-factory-per-attendee rule still applies. Expiry removes the factory from this count; its small expired marker remains until process exit. |
 | FACTORY_TTL_SECONDS | 21600 | Six-hour lifetime measured in wall time from successful provisioning. Pause, Stop and Restart at zero do not extend it. At expiry halt the factory, release credentials/workers and return 410 for controls, as defined by the API contract. |
 | FACTORY_BUFFER_LIMIT_EVENTS | 10000 | Maximum pending, unacknowledged production/snapshot events per factory in memory. This replaces the older FACTORY_BACKLOG_LIMIT_EVENTS setting. Check capacity before applying a transition. |
@@ -33,12 +32,12 @@ If a factory transition would exceed either production limit, leave it unapplied
 
 ## Enrollment configuration and credentials
 
-There is no server database. An organizer supplies ENROLLMENT_CONFIG_PATH as a local file or mounted deployment configuration/secret. The implementation must document and validate its JSON shape, uniqueness of attendee/profile/namespace assignments, token-hash format and authorized Kafka endpoint. Load it into memory on startup; runtime editing and hot reload are outside this prototype.
+The attendee list is loaded from `schemas/workshop_attendees.json` at startup. The implementation must document and validate its JSON shape, uniqueness of attendee IDs, token-hash format. Load it into memory on startup; runtime editing and hot reload are outside this prototype.
 
 Do not place attendees' producer API secrets in that enrollment file. They are submitted at factory registration and kept only in server process memory. Factory objects and idempotency history are not written back to the configuration file.
 
 ## Validation and old settings
 
-Validate all numeric settings as positive integers, PORT as a valid port, and the enrollment path as an existing readable file with valid content. Reject unresolved CHANGE_ME. Configuration errors must name the setting without revealing tokens or secrets.
+Validate all numeric settings as positive integers and PORT as a valid port. Configuration errors must name the setting without revealing tokens or secrets.
 
 FACTORY_BACKLOG_LIMIT_EVENTS=100000 belongs to the earlier durable-outbox proposal. The current memory-only configuration uses FACTORY_BUFFER_LIMIT_EVENTS=10000 and an explicit byte limit. Do not accept the old variable silently: report it as obsolete and direct the engineer to the new name. Remove DATABASE_URL and CREDENTIAL_ENCRYPTION_KEY if present in an older .env. Reject those obsolete settings when loaded from the project's .env or explicitly supplied to the application; no database or credential-encryption service is configured here.

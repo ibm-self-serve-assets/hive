@@ -14,7 +14,7 @@ The attendee's local API sits between the consumer and browser to serve the cons
 
 Each hosted factory owns its clock, resources, jobs, robots and in-memory state. The Simulation Server creates these logical instances and enforces attendee ownership. Its producer sends observation events to that factory's authorized Confluent topics. The consumer and dashboard run on the attendee's laptop in the other package.
 
-There is no dashboard projection in this server. HTTP lifecycle/status endpoints may return control metadata and stream health, but do not return factory inventory/progress as a replacement for event consumption. See ../contracts/factory_api.md and ../contracts/event_contract.md.
+There is no dashboard projection in this server. HTTP lifecycle/status endpoints may return control metadata and stream health, but do not return factory inventory/progress as a replacement for event consumption. See ../../spec_1_2_shared_contract/factory_api.md and ../../spec_1_2_shared_contract/event_contract.md.
 
 Scope every state lookup, locked update, scheduler task, credential lookup and pending-queue operation by factory_id. A failed producer for one factory cannot block the scheduler or publisher of another. No attendee can set another factory's topic names or owner.
 

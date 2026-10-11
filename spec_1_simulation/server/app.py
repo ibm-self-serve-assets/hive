@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     # Load configuration
     try:
         server_config = ServerConfig.load_from_env()
-        enrollment_config = load_enrollment_config(server_config.enrollment_config_path)
+        enrollment_config = load_enrollment_config()
         factory_manager = FactoryManager(server_config, enrollment_config)
         await factory_manager.start()
         logger.info("Hive Simulation Server initialized and running.")
@@ -89,7 +89,7 @@ class ProducerCredentials(BaseModel):
 
 
 class ProvisionFactoryRequest(BaseModel):
-    connection_profile_id: str
+    bootstrap_server: str
     producer_credentials: ProducerCredentials
 
 
@@ -108,7 +108,7 @@ class SpeedCommandRequest(BaseModel):
 
 
 class RotateConnectionRequest(BaseModel):
-    connection_profile_id: str
+    bootstrap_server: str
     producer_credentials: ProducerCredentials
 
 
@@ -129,8 +129,7 @@ async def get_server_info(attendee_id: str = Depends(get_current_attendee)):
     return {
         "server_epoch": factory_manager.get_server_epoch(),
         "contract_version": "1.0",
-        "active_factories": factory_manager.get_active_factory_count(),
-        "max_factories": server_config.max_factories,
+        "active_factories": len(factory_manager.factories),
     }
 
 
@@ -153,7 +152,6 @@ async def list_factories(attendee_id: str = Depends(get_current_attendee)):
                 "lifecycle_status": factory.current_run.lifecycle_status,
                 "created_at": factory.created_at.isoformat(),
                 "expires_at": factory.expires_at.isoformat(),
-                "connection_profile_id": factory.enrollment_record.connection_profile_id,
                 "topic_prefix": factory.enrollment_record.topic_prefix,
                 "consumer_group_prefix": factory.enrollment_record.consumer_group_prefix,
                 "topics": factory.get_topics(),
@@ -180,7 +178,7 @@ async def provision_factory(
 
     status_code, body = await factory_manager.register_factory(
         attendee_id=attendee_id,
-        connection_profile_id=req.connection_profile_id,
+        bootstrap_server=req.bootstrap_server,
         producer_key=req.producer_credentials.api_key,
         producer_secret=req.producer_credentials.api_secret,
         idempotency_key=idempotency_key,
@@ -213,7 +211,6 @@ async def get_factory(factory_id: str, attendee_id: str = Depends(get_current_at
         "speed": factory.current_run.speed,
         "created_at": factory.created_at.isoformat(),
         "expires_at": factory.expires_at.isoformat(),
-        "connection_profile_id": factory.enrollment_record.connection_profile_id,
         "topic_prefix": factory.enrollment_record.topic_prefix,
         "consumer_group_prefix": factory.enrollment_record.consumer_group_prefix,
         "topics": factory.get_topics(),
@@ -224,81 +221,6 @@ async def get_factory(factory_id: str, attendee_id: str = Depends(get_current_at
         if factory.current_run.operational_error
         else None,
     }
-
-
-@app.get("/v1/factories/{factory_id}/snapshot")
-async def get_factory_snapshot(factory_id: str, attendee_id: str = Depends(get_current_attendee)):
-    """
-    Returns the current full factory.state EventEnvelope for this factory.
-
-    This endpoint exists to support the local development mode where spec_2's consumer
-    polls directly instead of consuming from Confluent Cloud. In production the simulation
-    server publishes factory.state to Kafka; this endpoint is an equivalent direct read
-    of the same snapshot data. It does NOT bypass the event contract — it returns the
-    identical EventEnvelope structure that would be published to the .factory-state topic.
-    """
-    factory = factory_manager.factories.get(factory_id)
-    if not factory or factory.owner_attendee_id != attendee_id:
-        raise HTTPException(
-            status_code=404,
-            detail={"error_code": "not_found", "message": "Factory not found"},
-        )
-
-    if factory.check_expiry():
-        raise HTTPException(
-            status_code=410,
-            detail={"error_code": "expired", "message": "Factory expired"},
-        )
-
-    async with factory.lock:
-        _, snapshot_event = factory.current_run.create_snapshot_event(
-            event_seq_generator=factory.next_event_sequence,
-        )
-
-    return snapshot_event.model_dump()
-
-
-@app.get("/v1/factories/{factory_id}/events")
-async def get_factory_events(
-    factory_id: str,
-    attendee_id: str = Depends(get_current_attendee),
-    limit: int = 200,
-):
-    """
-    Returns recent activity events from the factory's pending buffer for local dev mode.
-
-    In production these events are consumed from Confluent Kafka topics. This endpoint
-    provides the same EventEnvelope payloads directly for the local direct-poll consumer
-    path in spec_2. Only non-snapshot event types are returned (resource.delivered,
-    job.started, part.produced, robot.assembled). Does not modify buffer state.
-    """
-    factory = factory_manager.factories.get(factory_id)
-    if not factory or factory.owner_attendee_id != attendee_id:
-        raise HTTPException(
-            status_code=404,
-            detail={"error_code": "not_found", "message": "Factory not found"},
-        )
-
-    if factory.check_expiry():
-        raise HTTPException(
-            status_code=410,
-            detail={"error_code": "expired", "message": "Factory expired"},
-        )
-
-    activity_types = {
-        "resource.delivered",
-        "job.started",
-        "part.produced",
-        "robot.assembled",
-        "manufacturing.blocked",
-    }
-    # Read from the read-only event_log ring buffer — never drained by the producer,
-    # so events are still available after acknowledgement.
-    async with factory.lock:
-        log_snapshot = list(factory.event_log)
-
-    results = [ev for ev in log_snapshot if ev.get("event_type") in activity_types][:limit]
-    return {"events": results}
 
 
 @app.post("/v1/factories/{factory_id}/start")
@@ -444,7 +366,7 @@ async def rotate_factory_connection(
     status_code, body = await factory_manager.rotate_connection(
         factory_id=factory_id,
         attendee_id=attendee_id,
-        connection_profile_id=req.connection_profile_id,
+        bootstrap_server=req.bootstrap_server,
         producer_key=req.producer_credentials.api_key,
         producer_secret=req.producer_credentials.api_secret,
         idempotency_key=idempotency_key,

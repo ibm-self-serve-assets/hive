@@ -1,6 +1,6 @@
 # Factory controls
 
-Implement ../contracts/factory_api.md through the local backend. The browser does not call the cloud API with a bearer token directly. Local command endpoints validate a per-session anti-CSRF token and exact allowed origin; do not accept arbitrary cross-origin control or credential-setting requests on localhost.
+Implement ../../spec_1_2_shared_contract/factory_api.md through the local backend. The browser does not call the cloud API with a bearer token directly. Local command endpoints validate a per-session anti-CSRF token and exact allowed origin; do not accept arbitrary cross-origin control or credential-setting requests on localhost.
 
 | Button | Server action | UI behavior |
 | --- | --- | --- |

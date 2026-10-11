@@ -1,51 +1,37 @@
 import pytest
 import os
 import json
-import hashlib
 from fastapi.testclient import TestClient
 from server.app import app
 import server.app as app_module
-from server.config import ServerConfig, EnrollmentConfig, EnrollmentRecord, ConnectionProfile
+from server.config import ServerConfig, EnrollmentConfig, EnrollmentRecord
 from server.factory_manager import FactoryManager
 
 
 @pytest.fixture
 def test_setup():
-    test_token = "secret-attendee-token-123"
-    token_hash = hashlib.sha256(test_token.encode("utf-8")).hexdigest()
+    test_token = "secret-queen-token-123"
 
     enrollment_cfg = EnrollmentConfig(
         workshop_id="workshop-test",
-        connection_profiles={
-            "test-profile": ConnectionProfile(
-                bootstrap_servers="localhost:9092",
-                security_protocol="PLAINTEXT",
-                sasl_mechanism="PLAIN",
-            )
-        },
         enrollments=[
             EnrollmentRecord(
-                attendee_id="attendee-1",
-                token_hash=token_hash,
-                connection_profile_id="test-profile",
-                topic_prefix="hive.test.attendee-1",
-                consumer_group_prefix="cg-attendee-1",
-                expires_at="2035-01-01T00:00:00Z",
+                attendee_id="queen-1",
+                access_token=test_token,
             ),
             EnrollmentRecord(
-                attendee_id="attendee-2",
-                token_hash=hashlib.sha256(b"token2").hexdigest(),
-                connection_profile_id="test-profile",
-                topic_prefix="hive.test.attendee-2",
-                consumer_group_prefix="cg-attendee-2",
-                expires_at="2035-01-01T00:00:00Z",
+                attendee_id="queen-2",
+                access_token="token2",
             ),
         ],
     )
+    # Derive prefixes as load_enrollment_config would
+    for rec in enrollment_cfg.enrollments:
+        rec.topic_prefix = f"hive.{enrollment_cfg.workshop_id}.{rec.attendee_id}"
+        rec.consumer_group_prefix = rec.topic_prefix
 
     srv_cfg = ServerConfig(
         port=8080,
-        enrollment_config_path="/fake/path",
         max_factories=5,
         factory_ttl_seconds=3600,
         factory_buffer_limit_events=1000,
@@ -86,7 +72,7 @@ def test_factory_lifecycle_and_isolation(test_setup):
 
     # 2. Provision factory
     prov_req = {
-        "connection_profile_id": "test-profile",
+        "bootstrap_server": "localhost:9092",
         "producer_credentials": {
             "api_key": "test_key",
             "api_secret": "test_secret",

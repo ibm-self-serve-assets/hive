@@ -1,6 +1,6 @@
 # Owned factories and controls
 
-Implement ../contracts/factory_api.md. Keep the endpoint and lifecycle semantics, but store factory objects, owner mappings, operation results and idempotency caches in memory only.
+Implement ../../spec_1_2_shared_contract/factory_api.md. Keep the endpoint and lifecycle semantics, but store factory objects, owner mappings, operation results and idempotency caches in memory only.
 
 Use an in-process registration lock to enforce one factory per enrolled owner and a per-factory lock for controls/simulation changes. Validate producer credentials asynchronously without holding locks during network calls. A failed provisioning attempt remains available for retry during this process lifetime.
 

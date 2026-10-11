@@ -6,7 +6,6 @@ interface ConnectionModalProps {
   onClose: () => void;
   onConnect: (formData: any) => Promise<void>;
   initialServerUrl: string;
-  initialProfileId: string;
 }
 
 export const ConnectionModal: React.FC<ConnectionModalProps> = ({
@@ -14,14 +13,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   onClose,
   onConnect,
   initialServerUrl,
-  initialProfileId,
 }) => {
   const [serverUrl, setServerUrl] = useState(initialServerUrl || 'http://localhost:8080');
-  const [token, setToken] = useState('password');
+  const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
-  const [profileId, setProfileId] = useState(initialProfileId || 'workshop-cluster');
-  const [producerKey, setProducerKey] = useState('MOCK_KEY');
-  const [producerSecret, setProducerSecret] = useState('MOCK_SECRET');
+  const [producerKey, setProducerKey] = useState('');
+  const [producerSecret, setProducerSecret] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +33,6 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       await onConnect({
         simulation_server_url: serverUrl,
         workshop_access_token: token,
-        connection_profile_id: profileId,
         producer_api_key: producerKey,
         producer_api_secret: producerSecret,
       });
@@ -67,6 +63,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
           </div>
         )}
 
+        <p className="text-xs text-gray-500">
+          Confluent credentials are loaded from your <code>.env</code> file.
+          Enter the simulation server URL, your workshop token, and your Confluent producer key.
+        </p>
+
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
             <label className="block font-semibold text-gray-700 mb-1">
@@ -93,7 +94,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                 onChange={(e) => setToken(e.target.value)}
                 required
                 className="w-full px-3 py-2 pr-10 border rounded border-gray-300 focus:outline-none focus:border-hive-blue font-mono"
-                placeholder="password"
+                placeholder="token-001"
               />
               <button
                 type="button"
@@ -104,29 +105,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                 {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            <p className="text-[10px] text-gray-400 mt-0.5">
-              Default: password
-            </p>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-gray-700 mb-1">
-              Connection Profile ID
-            </label>
-            <input
-              type="text"
-              value={profileId}
-              onChange={(e) => setProfileId(e.target.value)}
-              required
-              className="w-full px-3 py-2 border rounded border-gray-300 focus:outline-none focus:border-hive-blue font-mono"
-              placeholder="workshop-cluster"
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100">
             <div>
               <label className="block font-semibold text-gray-700 mb-1">
-                Producer Kafka Key
+                Producer API Key
               </label>
               <input
                 type="text"
@@ -134,6 +118,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                 onChange={(e) => setProducerKey(e.target.value)}
                 required
                 className="w-full px-3 py-2 border rounded border-gray-300 focus:outline-none focus:border-hive-blue font-mono"
+                placeholder="key"
               />
             </div>
             <div>
@@ -147,6 +132,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   onChange={(e) => setProducerSecret(e.target.value)}
                   required
                   className="w-full px-3 py-2 pr-9 border rounded border-gray-300 focus:outline-none focus:border-hive-blue font-mono"
+                  placeholder="secret"
                 />
                 <button
                   type="button"
@@ -159,6 +145,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               </div>
             </div>
           </div>
+
+          <p className="text-[10px] text-gray-400">
+            The producer key/secret is forwarded to the simulation server so it can publish
+            events to your Confluent topics. Consumer credentials are read from <code>.env</code>.
+          </p>
 
           <div className="flex justify-end space-x-2 pt-3 border-t">
             <button

@@ -2,56 +2,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hive.example.com/schemas/enrollment-config.json",
   "title": "EnrollmentConfig",
+  "description": "Organizer-supplied workshop enrollment config. Topic prefixes and consumer group prefixes are derived automatically as hive.<workshop_id>.<attendee_id>.",
   "type": "object",
-  "required": [
-    "workshop_id",
-    "connection_profiles",
-    "enrollments"
-  ],
+  "required": ["workshop_id", "enrollments"],
   "properties": {
-    "workshop_id": { "type": "string" },
-    "connection_profiles": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": [
-          "bootstrap_servers",
-          "security_protocol",
-          "sasl_mechanism"
-        ],
-        "properties": {
-          "bootstrap_servers": { "type": "string" },
-          "security_protocol": {
-            "type": "string",
-            "enum": ["SASL_SSL", "PLAINTEXT", "SASL_PLAINTEXT", "SSL"]
-          },
-          "sasl_mechanism": {
-            "type": "string",
-            "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "OAUTHBEARER"]
-          }
-        },
-        "additionalProperties": false
-      }
+    "workshop_id": {
+      "type": "string",
+      "description": "Workshop identifier, e.g. hive-01. Used to derive topic and consumer group prefixes."
     },
     "enrollments": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "attendee_id",
-          "token_hash",
-          "connection_profile_id",
-          "topic_prefix",
-          "consumer_group_prefix",
-          "expires_at"
-        ],
+        "required": ["attendee_id", "access_token"],
         "properties": {
-          "attendee_id": { "type": "string" },
-          "token_hash": { "type": "string" },
-          "connection_profile_id": { "type": "string" },
-          "topic_prefix": { "type": "string" },
-          "consumer_group_prefix": { "type": "string" },
-          "expires_at": { "type": "string", "format": "date-time" }
+          "attendee_id": {
+            "type": "string",
+            "description": "Unique attendee identifier, e.g. queen-001. Combined with workshop_id to form topic prefix hive.<workshop_id>.<attendee_id>."
+          },
+          "access_token": {
+            "type": "string",
+            "description": "Plaintext workshop access token issued to the attendee, e.g. token-001."
+          }
         },
         "additionalProperties": false
       }

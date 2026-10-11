@@ -34,6 +34,13 @@ class EventEnvelope(BaseModel):
     payload: Dict[str, Any]
 
 
+class FactoryInitializedPayload(BaseModel):
+    operation_id: str
+    attendee_id: str
+    topic_prefix: str
+    expires_at: str
+
+
 class ConnectionTestPayload(BaseModel):
     operation_id: str
     probe: bool = True
@@ -58,6 +65,14 @@ class PartProducedPayload(BaseModel):
     station_id: str
     part_id: str
     quantity: int = 1
+
+
+class AssemblyStartedPayload(BaseModel):
+    job_id: str
+    station_id: str
+    robot_type: str
+    inputs: Dict[str, int]
+    duration_ms: int
 
 
 class RobotAssembledPayload(BaseModel):

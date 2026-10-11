@@ -40,14 +40,14 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Local Hive Controls Backend...")
     csrf_token = secrets.token_hex(16)
 
-    # Initialize consumer manager
+    # Initialize consumer manager (topics/group wired in after auto_reconnect resolves)
     consumer_mgr = EventConsumerManager(
         store=store,
         sim_server_url=config.simulation_server_url,
         token=config.workshop_access_token,
-        bootstrap_servers=config.confluent_bootstrap_servers,
-        api_key=config.confluent_consumer_api_key,
-        api_secret=config.confluent_consumer_api_secret,
+        bootstrap_servers=config.confluent_bootstrap_server,
+        api_key=config.confluent_api_key,
+        api_secret=config.confluent_api_secret,
         on_event_callback=notify_subscribers,
     )
     consumer_mgr.start()
@@ -64,6 +64,12 @@ async def lifespan(app: FastAPI):
 
 
 async def auto_reconnect():
+    """
+    Called on startup when a workshop token is already configured.
+    Fetches the current server epoch and any existing factory, then
+    restarts the consumer manager with the correct topics and group.
+    """
+    global consumer_mgr
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             headers = {"Authorization": f"Bearer {config.workshop_access_token}"}
@@ -81,6 +87,25 @@ async def auto_reconnect():
                     store.active_factory_id = fid
                     store.server_epoch = f["server_epoch"]
                     logger.info(f"Reconnected to existing factory {fid}")
+
+                    # Restart consumer with correct topics and consumer group
+                    topic_list = list(f.get("topics", {}).values())
+                    group_prefix = f.get("consumer_group_prefix", "")
+                    if topic_list and group_prefix and config.confluent_bootstrap_server:
+                        consumer_mgr.stop()
+                        consumer_mgr = EventConsumerManager(
+                            store=store,
+                            sim_server_url=config.simulation_server_url,
+                            token=config.workshop_access_token,
+                            bootstrap_servers=config.confluent_bootstrap_server,
+                            api_key=config.confluent_api_key,
+                            api_secret=config.confluent_api_secret,
+                            topics=topic_list,
+                            consumer_group=group_prefix,
+                            on_event_callback=notify_subscribers,
+                        )
+                        consumer_mgr.start()
+                        logger.info(f"Consumer restarted with {len(topic_list)} Confluent topics")
     except Exception as e:
         logger.debug(f"Auto-reconnect skipped or failed: {e}")
 
@@ -117,13 +142,7 @@ def verify_csrf(x_csrf_token: Optional[str] = Header(None)):
 # Request schemas
 class ConnectRequest(BaseModel):
     simulation_server_url: str
-    workshop_access_token: str
-    connection_profile_id: str
-    producer_api_key: str
-    producer_api_secret: str
-    consumer_bootstrap_servers: Optional[str] = None
-    consumer_api_key: Optional[str] = None
-    consumer_api_secret: Optional[str] = None
+    workshop_access_token: Optional[str] = None
 
 
 class ControlCommandRequest(BaseModel):
@@ -138,17 +157,36 @@ async def get_csrf_token():
     return {"csrf_token": csrf_token}
 
 
+@app.get("/api/config")
+async def get_config():
+    """
+    Exposes non-secret connection config from .env so the frontend can determine
+    whether all required credentials are present and auto-connect without a dialog.
+    Secrets are never returned.
+    """
+    fully_configured = bool(
+        config.simulation_server_url
+        and config.workshop_access_token
+        and config.confluent_bootstrap_server
+        and config.confluent_api_key
+    )
+    return {
+        "simulation_server_url": config.simulation_server_url,
+        "fully_configured": fully_configured,
+        "has_confluent_config": bool(config.confluent_bootstrap_server and config.confluent_api_key),
+    }
+
+
 @app.get("/api/status")
 async def get_status():
     observed = store.get_observed_state()
     return {
         "configured": bool(config.workshop_access_token),
         "simulation_server_url": config.simulation_server_url,
-        "connection_profile_id": config.connection_profile_id,
         "active_factory_id": store.active_factory_id,
         "server_epoch": store.server_epoch,
         "stream_health": observed["stream_health"],
-        "has_confluent_config": bool(config.confluent_bootstrap_servers and config.confluent_consumer_api_key),
+        "has_confluent_config": bool(config.confluent_bootstrap_server and config.confluent_api_key),
         "observed_state": observed,
     }
 
@@ -166,18 +204,25 @@ async def connect_and_provision(
     verify_csrf(x_csrf_token)
     global config, consumer_mgr
 
-    # Update in-memory configuration
-    config.simulation_server_url = req.simulation_server_url.rstrip("/")
-    config.workshop_access_token = req.workshop_access_token
-    config.connection_profile_id = req.connection_profile_id
-    if req.consumer_bootstrap_servers:
-        config.confluent_bootstrap_servers = req.consumer_bootstrap_servers
-    if req.consumer_api_key:
-        config.confluent_consumer_api_key = req.consumer_api_key
-    if req.consumer_api_secret:
-        config.confluent_consumer_api_secret = req.consumer_api_secret
+    # Simulation server URL may be overridden from the request (e.g. switching from local
+    # to a hosted server). Workshop token and all Confluent credentials come from .env.
+    config.simulation_server_url = req.simulation_server_url.rstrip("/") or config.simulation_server_url
+    # Token from request takes precedence only if non-empty; otherwise use .env value
+    if req.workshop_access_token:
+        config.workshop_access_token = req.workshop_access_token
 
-    token = req.workshop_access_token or ""
+    if not config.confluent_bootstrap_server:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "missing_confluent_config", "message": "CONFLUENT_BOOTSTRAP_SERVER is not set in .env"},
+        )
+    if not config.confluent_api_key or not config.confluent_api_secret:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "missing_confluent_config", "message": "CONFLUENT_API_KEY / SECRET are not set in .env"},
+        )
+
+    token = config.workshop_access_token or ""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -209,6 +254,27 @@ async def connect_and_provision(
                     f0 = factories[0]
                     store.active_factory_id = f0["factory_id"]
                     store.server_epoch = f0["server_epoch"]
+
+                    # Restart consumer with topics and group from existing factory
+                    topic_list = list(f0.get("topics", {}).values())
+                    group_prefix = f0.get("consumer_group_prefix", "")
+                    if topic_list and group_prefix and config.confluent_bootstrap_server:
+                        if consumer_mgr:
+                            consumer_mgr.stop()
+                        new_mgr = EventConsumerManager(
+                            store=store,
+                            sim_server_url=config.simulation_server_url,
+                            token=config.workshop_access_token,
+                            bootstrap_servers=config.confluent_bootstrap_server,
+                            api_key=config.confluent_api_key,
+                            api_secret=config.confluent_api_secret,
+                            topics=topic_list,
+                            consumer_group=group_prefix,
+                            on_event_callback=notify_subscribers,
+                        )
+                        new_mgr.start()
+                        consumer_mgr = new_mgr
+
                     return {
                         "status": "reconnected",
                         "factory_id": f0["factory_id"],
@@ -220,10 +286,10 @@ async def connect_and_provision(
 
         # 3. Provision new factory
         prov_body = {
-            "connection_profile_id": req.connection_profile_id,
+            "bootstrap_server": config.confluent_bootstrap_server,
             "producer_credentials": {
-                "api_key": req.producer_api_key,
-                "api_secret": req.producer_api_secret,
+                "api_key": config.confluent_api_key,
+                "api_secret": config.confluent_api_secret,
             },
         }
         try:
@@ -253,16 +319,34 @@ async def connect_and_provision(
         factory_id = prov_data["factory_id"]
         store.active_factory_id = factory_id
 
-        # Restart consumer manager with updated credentials
+        # Fetch the factory detail to get authoritative topics and consumer_group_prefix
+        topics_map: Dict[str, str] = {}
+        group_prefix: str = ""
+        try:
+            fdetail_r = await client.get(
+                f"{config.simulation_server_url}/v1/factories/{factory_id}",
+                headers=headers,
+            )
+            if fdetail_r.status_code == 200:
+                fdetail = fdetail_r.json()
+                topics_map = fdetail.get("topics", {})
+                group_prefix = fdetail.get("consumer_group_prefix", "")
+        except Exception as e:
+            logger.debug(f"Could not fetch factory detail for topics: {e}")
+
+        # Restart consumer manager with topics and group
         if consumer_mgr:
             consumer_mgr.stop()
+        topic_list = list(topics_map.values()) if topics_map else []
         consumer_mgr = EventConsumerManager(
             store=store,
             sim_server_url=config.simulation_server_url,
             token=config.workshop_access_token,
-            bootstrap_servers=config.confluent_bootstrap_servers,
-            api_key=config.confluent_consumer_api_key,
-            api_secret=config.confluent_consumer_api_secret,
+            bootstrap_servers=config.confluent_bootstrap_server,
+            api_key=config.confluent_api_key,
+            api_secret=config.confluent_api_secret,
+            topics=topic_list if (topic_list and group_prefix) else [],
+            consumer_group=group_prefix or None,
             on_event_callback=notify_subscribers,
         )
         consumer_mgr.start()
@@ -272,6 +356,7 @@ async def connect_and_provision(
             "factory_id": factory_id,
             "operation_id": prov_data.get("operation_id"),
             "server_epoch": epoch,
+            "topics": topics_map,
         }
 
 

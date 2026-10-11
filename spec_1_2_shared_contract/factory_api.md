@@ -1,6 +1,6 @@
 # Shared factory API — contract 1.0
 
-This file is identical in both packages. It defines the boundary between the hosted Simulation Server and the attendee's local application. Implement /v1 routes and publish matching OpenAPI before integrating the two packages. The server owns this contract; change both copies together.
+This contract describes the shared contract around API and schema between both specifications 1 & 2. It defines the boundary between the hosted Simulation Server and the attendee's local application. Implement /v1 routes and publish matching OpenAPI before integrating the two packages. The server owns this contract; change both copies together.
 
 ## Identity and onboarding
 
@@ -16,7 +16,6 @@ POST /v1/factories, with Idempotency-Key header (UUID):
 
 ```json
 {
-  "connection_profile_id": "workshop-cluster",
   "producer_credentials": {
     "api_key": "<Kafka API key>",
     "api_secret": "<Kafka API secret>"
@@ -28,7 +27,7 @@ The bootstrap endpoint, namespace and TLS profile are resolved from the authoriz
 
 Creation reserves the caller's quota, factory_id and initial empty run/generation under an in-process registration lock, keeps credentials only in memory and creates a provisioning operation. Return 202 containing factory_id, operation_id and status_url. Do not start simulation time yet. A background task verifies broker connectivity, existing topics and actual publish permission by sending an empty paused factory.state probe with this newly assigned factory identity; it must not create resources or robots. Verify write permission on the four activity topics using an isolated connection.test event defined in the event contract. All probes require broker acknowledgment. Failure produces provisioning_failed with a sanitized diagnostic. Do not leave a clock running behind a failed registration.
 
-GET /v1/operations/{operation_id} returns only the owner's operation status: pending, succeeded or failed, plus error_code/message (no secrets). On success the factory is paused at zero and GET factory returns factory_id, run_id, run_generation, topic names, consumer_group_prefix, status, expires_at and connection_profile_id. It never returns the API secret. The local application starts its consumer and waits for a real snapshot before showing observed factory state.
+GET /v1/operations/{operation_id} returns only the owner's operation status: pending, succeeded or failed, plus error_code/message (no secrets). On success the factory is paused at zero and GET factory returns factory_id, run_id, run_generation, topic names, consumer_group_prefix, status, expires_at. It never returns the API secret. The local application starts its consumer and waits for a real snapshot before showing observed factory state.
 
 A replay of creation with the same idempotency key and identical request returns the same factory/operation. Keep a keyed request digest in memory, not a plaintext credential body, for conflict detection. Same key/different request returns 409. A second creation key when the owner already has a factory returns 409 with the existing factory_id. Provisioning retries use the existing factory via connection update, not another quota slot.
 

@@ -13,6 +13,7 @@ from server.models import (
     EventEnvelope,
     ResourceDeliveredPayload,
     JobStartedPayload,
+    AssemblyStartedPayload,
     PartProducedPayload,
     RobotAssembledPayload,
     ManufacturingBlockedPayload,
@@ -447,16 +448,16 @@ class SimulationRun:
                         self.active_jobs[st_id] = job
                         self.state_revision += 1
 
-                        payload = JobStartedPayload(
+                        payload = AssemblyStartedPayload(
                             job_id=job_id,
                             station_id=st_id,
-                            output_id=recipe.output_id,
+                            robot_type=recipe.output_id,
                             inputs=dict(recipe.inputs),
                             duration_ms=recipe.duration_ms,
                         )
                         event = EventEnvelope(
                             event_id=started_event_id,
-                            event_type="job.started",
+                            event_type="assembly.started",
                             schema_version=1,
                             factory_id=self.factory_id,
                             server_epoch=self.server_epoch,
@@ -469,7 +470,7 @@ class SimulationRun:
                             causation_id=None,
                             payload=payload.model_dump(),
                         )
-                        emitted_events.append((".job-started", event))
+                        emitted_events.append((".assembly-started", event))
                         started_any = True
 
             # Advance cursor by 1 for this scheduling pass

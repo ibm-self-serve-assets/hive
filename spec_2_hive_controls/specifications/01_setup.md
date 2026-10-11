@@ -22,7 +22,6 @@ The included .env and .env.example are matching templates. Populate .env private
 | --- | --- | --- |
 | SIMULATION_SERVER_URL | HTTPS base URL of the deployed Spec 1 Simulation Server, supplied by the organizer. Do not append /v1; the client adds API paths. Example shape: https://your-simulation-server.example | Yes |
 | WORKSHOP_ACCESS_TOKEN | Organizer-issued owner token. The local backend sends it as a Bearer token to the Simulation Server. It is not a Confluent key. | Yes |
-| CONNECTION_PROFILE_ID | Organizer-issued profile identifier for the approved Confluent cluster/namespace. Sent during factory registration. | Yes |
 | CONFLUENT_BOOTSTRAP_SERVERS | Kafka bootstrap host:port from the assigned Confluent cluster's client configuration. Must match the selected profile; this is not the Simulation Server URL. | Yes |
 | CONFLUENT_CONSUMER_API_KEY | Kafka API key for an identity allowed to read the assigned factory topics and use the assigned consumer-group prefix. Maps to the local consumer's SASL username. | Yes |
 | CONFLUENT_CONSUMER_API_SECRET | Secret paired with that Kafka API key. Maps to the local consumer's SASL password. Obtain it when the key is created or have the organizer supply it privately. | Yes |

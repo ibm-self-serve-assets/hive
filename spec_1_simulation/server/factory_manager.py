@@ -11,6 +11,7 @@ from server.config import ServerConfig, EnrollmentConfig, EnrollmentRecord
 from server.models import (
     EventEnvelope,
     FactoryStatePayload,
+    FactoryInitializedPayload,
     OperationalError,
 )
 from server.simulation import SimulationRun
@@ -68,6 +69,10 @@ class FactoryInstance:
         self.last_tick_wall_time: float = time.monotonic()
         self.last_snapshot_wall_time: float = 0.0
 
+        # Per-factory publish back-off state (exponential, capped at 5 s)
+        self.publish_failure_count: int = 0
+        self.publish_next_retry_after: float = 0.0  # monotonic time
+
         # Command receipts and idempotency cache: idempotency_key -> response_dict
         self.idempotency_cache: Dict[str, Tuple[str, Dict[str, Any]]] = {}
 
@@ -97,6 +102,7 @@ class FactoryInstance:
         return {
             "resource_delivered": f"{p}.resource-delivered",
             "job_started": f"{p}.job-started",
+            "assembly_started": f"{p}.assembly-started",
             "part_produced": f"{p}.part-produced",
             "robot_assembled": f"{p}.robot-assembled",
             "factory_state": f"{p}.factory-state",
@@ -161,24 +167,16 @@ class FactoryManager:
         if not epoch_header or epoch_header != self.server_epoch:
             raise ValueError("server_restarted")
 
-    def get_active_factory_count(self) -> int:
-        count = 0
-        now = datetime.now(timezone.utc)
-        for f in self.factories.values():
-            if not f.is_expired and f.expires_at > now:
-                count += 1
-        return count
-
     async def register_factory(
         self,
         attendee_id: str,
-        connection_profile_id: str,
+        bootstrap_server: str,
         producer_key: str,
         producer_secret: str,
         idempotency_key: str,
     ) -> Tuple[int, Dict[str, Any]]:
         # Check global registration idempotency
-        req_body_str = f"{connection_profile_id}:{producer_key}"
+        req_body_str = f"{bootstrap_server}:{producer_key}"
         req_hash = hashlib.sha256(req_body_str.encode("utf-8")).hexdigest()
 
         async with self.registration_lock:
@@ -203,28 +201,15 @@ class FactoryManager:
                         "factory_id": existing_fid,
                     }
 
-            # Check MAX_FACTORIES capacity
-            if self.get_active_factory_count() >= self.config.max_factories:
-                return 429, {
-                    "error_code": "capacity_reached",
-                    "message": "Server has reached maximum factory capacity",
-                }
-
             # Find enrollment record
             enrollment_rec = self.enrollment_config.find_by_attendee_id(attendee_id)
             if not enrollment_rec:
                 return 401, {"error_code": "unauthorized", "message": "Attendee not enrolled"}
 
-            if connection_profile_id not in self.enrollment_config.connection_profiles:
+            if not bootstrap_server:
                 return 400, {
-                    "error_code": "invalid_connection_profile",
-                    "message": f"Connection profile '{connection_profile_id}' not found",
-                }
-
-            if connection_profile_id != enrollment_rec.connection_profile_id:
-                return 400, {
-                    "error_code": "disallowed_connection_profile",
-                    "message": "Connection profile not permitted for this enrollment",
+                    "error_code": "missing_bootstrap_server",
+                    "message": "bootstrap_server is required",
                 }
 
             factory_id = str(uuid.uuid4())
@@ -240,11 +225,10 @@ class FactoryManager:
             factory.producer_key = producer_key
             factory.producer_secret = producer_secret
 
-            profile = self.enrollment_config.connection_profiles[connection_profile_id]
             factory.producer = FactoryKafkaProducer(
-                bootstrap_servers=profile.bootstrap_servers,
-                security_protocol=profile.security_protocol,
-                sasl_mechanism=profile.sasl_mechanism,
+                bootstrap_servers=bootstrap_server,
+                security_protocol="SASL_SSL",
+                sasl_mechanism="PLAIN",
                 api_key=producer_key,
                 api_secret=producer_secret,
                 topic_prefix=enrollment_rec.topic_prefix,
@@ -273,12 +257,6 @@ class FactoryManager:
         asyncio.create_task(
             self._verify_provisioning_task(factory_id, operation_id)
         )
-
-        # Allow immediate test pass if mock credentials are used
-        if producer_key == "MOCK_KEY":
-            async with factory.lock:
-                factory.current_run.lifecycle_status = "paused"
-            op.status = "succeeded"
 
         return 202, resp
 
@@ -320,6 +298,33 @@ class FactoryManager:
             if ok:
                 op.status = "succeeded"
                 factory.current_run.lifecycle_status = "paused"
+
+                # Publish factory.initialized — marks the moment this factory
+                # became ready. Published to .factory-state (compact topic) so
+                # consumers replaying from earliest always see it.
+                init_payload = FactoryInitializedPayload(
+                    operation_id=operation_id,
+                    attendee_id=factory.owner_attendee_id,
+                    topic_prefix=factory.enrollment_record.topic_prefix,
+                    expires_at=factory.expires_at.isoformat(),
+                )
+                init_event = EventEnvelope(
+                    event_id=str(uuid.uuid4()),
+                    event_type="factory.initialized",
+                    schema_version=1,
+                    factory_id=factory.factory_id,
+                    server_epoch=factory.server_epoch,
+                    run_id=factory.current_run.run_id,
+                    run_generation=factory.current_run.run_generation,
+                    event_sequence=factory.next_event_sequence(),
+                    state_revision=factory.current_run.state_revision,
+                    occurred_at=datetime.now(timezone.utc).isoformat(),
+                    sim_time_ms=0,
+                    causation_id=operation_id,
+                    payload=init_payload.model_dump(),
+                )
+                factory.buffer.enqueue(".factory-state", init_event, is_control=True)
+
                 # Queue initial empty paused snapshot into buffer
                 factory.buffer.enqueue(".factory-state", snapshot_event, is_control=True)
             else:
@@ -332,7 +337,7 @@ class FactoryManager:
         self,
         factory_id: str,
         attendee_id: str,
-        connection_profile_id: str,
+        bootstrap_server: str,
         producer_key: str,
         producer_secret: str,
         idempotency_key: str,
@@ -344,7 +349,7 @@ class FactoryManager:
         if factory.check_expiry():
             return 410, {"error_code": "expired", "message": "Factory expired"}
 
-        req_body_str = f"{connection_profile_id}:{producer_key}"
+        req_body_str = f"{bootstrap_server}:{producer_key}"
         req_hash = hashlib.sha256(req_body_str.encode("utf-8")).hexdigest()
 
         async with factory.lock:
@@ -357,12 +362,6 @@ class FactoryManager:
                         "error_code": "idempotency_conflict",
                         "message": "Idempotency key reused with different request payload",
                     }
-
-            if connection_profile_id != factory.enrollment_record.connection_profile_id:
-                return 400, {
-                    "error_code": "disallowed_connection_profile",
-                    "message": "Connection profile cannot be changed to a different profile",
-                }
 
             operation_id = str(uuid.uuid4())
             op = OperationRecord(
@@ -383,7 +382,7 @@ class FactoryManager:
         # Asynchronously verify replacement credentials
         asyncio.create_task(
             self._verify_rotation_task(
-                factory_id, operation_id, connection_profile_id, producer_key, producer_secret
+                factory_id, operation_id, bootstrap_server, producer_key, producer_secret
             )
         )
 
@@ -393,7 +392,7 @@ class FactoryManager:
         self,
         factory_id: str,
         operation_id: str,
-        connection_profile_id: str,
+        bootstrap_server: str,
         producer_key: str,
         producer_secret: str,
     ):
@@ -402,11 +401,10 @@ class FactoryManager:
         if not factory or not op:
             return
 
-        profile = self.enrollment_config.connection_profiles[connection_profile_id]
         test_producer = FactoryKafkaProducer(
-            bootstrap_servers=profile.bootstrap_servers,
-            security_protocol=profile.security_protocol,
-            sasl_mechanism=profile.sasl_mechanism,
+            bootstrap_servers=bootstrap_server,
+            security_protocol="SASL_SSL",
+            sasl_mechanism="PLAIN",
             api_key=producer_key,
             api_secret=producer_secret,
             topic_prefix=factory.enrollment_record.topic_prefix,
@@ -700,13 +698,21 @@ class FactoryManager:
     async def _publisher_loop(self):
         """
         Background publisher sending oldest-first queued events to Confluent Kafka.
-        Fair sending across all factories.
+        Fair sending across all factories. Uses per-factory exponential back-off on
+        consecutive publish failures (100 ms → 200 ms → ... → 5 s cap) to prevent
+        tight retry storms against a degraded broker without blocking other factories.
         """
         while self._running:
             try:
-                await asyncio.sleep(0.02)  # 20ms flush loop
+                await asyncio.sleep(0.02)  # 20 ms base flush loop
+                now = time.monotonic()
+
                 for factory in list(self.factories.values()):
                     if factory.is_expired or not factory.producer:
+                        continue
+
+                    # Respect per-factory back-off window
+                    if now < factory.publish_next_retry_after:
                         continue
 
                     # Grab batch from buffer under lock
@@ -716,7 +722,8 @@ class FactoryManager:
                     if not batch:
                         continue
 
-                    # Publish batch outside lock
+                    # Publish batch outside lock; stop on first failure for this factory
+                    factory_ok = True
                     for qe in batch:
                         success = await asyncio.to_thread(
                             factory.producer.publish_sync,
@@ -729,7 +736,23 @@ class FactoryManager:
                                 factory.buffer.acknowledge(qe)
                             else:
                                 qe.in_flight = False
-                                break  # Break factory loop to retry later
+                                factory_ok = False
+                                break  # stop publishing for this factory this cycle
+
+                    if factory_ok:
+                        # Reset back-off on successful flush
+                        factory.publish_failure_count = 0
+                        factory.publish_next_retry_after = 0.0
+                    else:
+                        # Exponential back-off: 0.1s * 2^failures, capped at 5 s
+                        factory.publish_failure_count += 1
+                        delay = min(0.1 * (2 ** factory.publish_failure_count), 5.0)
+                        factory.publish_next_retry_after = time.monotonic() + delay
+                        logger.debug(
+                            f"Factory {factory.factory_id[:8]} publish failed "
+                            f"(attempt {factory.publish_failure_count}); "
+                            f"retry in {delay:.1f}s"
+                        )
 
             except asyncio.CancelledError:
                 break

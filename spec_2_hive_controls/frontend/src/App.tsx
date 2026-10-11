@@ -3,7 +3,6 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ManufacturingFloor } from './components/ManufacturingFloor';
 import { EventLog } from './components/EventLog';
-import { ConnectionModal } from './components/ConnectionModal';
 import { ObservedState, ActivityEvent, FactorySnapshot, StationRecipes } from './types';
 
 export const App: React.FC = () => {
@@ -23,40 +22,68 @@ export const App: React.FC = () => {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [stationRecipes, setStationRecipes] = useState<StationRecipes>({});
   const [csrfToken, setCsrfToken] = useState<string>('');
-  const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [isCommandPending, setIsCommandPending] = useState(false);
-  const [serverUrl, setServerUrl] = useState('http://localhost:8080');
 
-  // Fetch initial CSRF & Status
+  // On startup: fetch CSRF, check config, then auto-connect if fully configured
   useEffect(() => {
     const initApp = async () => {
       try {
         const csrfRes = await fetch('/api/csrf');
         if (csrfRes.ok) {
-          const data = await csrfRes.json();
-          setCsrfToken(data.csrf_token);
-        }
+          const { csrf_token } = await csrfRes.json();
+          setCsrfToken(csrf_token);
 
-        const statusRes = await fetch('/api/status');
-        if (statusRes.ok) {
-          const sData = await statusRes.json();
-          if (sData.observed_state) {
-            setObservedState(sData.observed_state);
+          // Check whether all .env credentials are present
+          const configRes = await fetch('/api/config');
+          if (!configRes.ok) return;
+          const cfg = await configRes.json();
+
+          if (!cfg.fully_configured) {
+            setConnectError('Missing credentials in .env — check WORKSHOP_ACCESS_TOKEN, CONFLUENT_BOOTSTRAP_SERVER, CONFLUENT_CONSUMER_API_KEY, CONFLUENT_PRODUCER_API_KEY.');
+            return;
           }
-          if (sData.simulation_server_url) {
-            setServerUrl(sData.simulation_server_url);
+
+          // Check if already connected from a previous session
+          const statusRes = await fetch('/api/status');
+          if (statusRes.ok) {
+            const sData = await statusRes.json();
+            if (sData.observed_state) setObservedState(sData.observed_state);
+            if (sData.active_factory_id) return; // already provisioned
           }
-          if (!sData.active_factory_id) {
-            setIsConnectOpen(true);
-          }
+
+          // Auto-connect — all credentials are in .env, no dialog needed
+          await autoConnect(csrf_token, cfg.simulation_server_url);
         }
       } catch (err) {
-        console.error('Initial status load failed:', err);
+        console.error('Initial connect failed:', err);
       }
     };
 
     initApp();
   }, []);
+
+  const autoConnect = async (token: string, serverUrl: string) => {
+    try {
+      const res = await fetch('/api/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ simulation_server_url: serverUrl, workshop_access_token: '' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err?.detail;
+        const msg = typeof detail === 'object' ? detail?.message || JSON.stringify(detail) : detail || `HTTP ${res.status}`;
+        setConnectError(`Auto-connect failed: ${msg}`);
+        return;
+      }
+      const data = await res.json();
+      setObservedState((prev) => ({ ...prev, active_factory_id: data.factory_id, server_epoch: data.server_epoch }));
+      setConnectError(null);
+    } catch (e: any) {
+      setConnectError(`Auto-connect failed: ${e.message}`);
+    }
+  };
 
   // Helper: absorb recipe inputs from a job.started payload
   const absorbRecipe = (payload: Record<string, any>) => {
@@ -177,6 +204,7 @@ export const App: React.FC = () => {
   }, []);
 
   const handleSendCommand = async (command: string, extra?: any) => {
+    // csrfToken may be set after mount; read from state
     setIsCommandPending(true);
     try {
       const res = await fetch('/api/controls', {
@@ -216,49 +244,19 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleConnect = async (formData: any) => {
-    const res = await fetch('/api/connect', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-      },
-      body: JSON.stringify(formData),
-    });
-
-    if (!res.ok) {
-      let message = 'Failed to connect';
-      try {
-        const err = await res.json();
-        const detail = err?.detail;
-        if (typeof detail === 'object' && detail !== null) {
-          message = detail.message || detail.error_code || JSON.stringify(detail);
-        } else if (typeof detail === 'string') {
-          message = detail;
-        } else {
-          message = err?.message || JSON.stringify(err);
-        }
-      } catch {
-        message = (await res.text()) || `Server error (${res.status})`;
-      }
-      throw new Error(message);
-    }
-
-    const data = await res.json();
-    setObservedState((prev) => ({
-      ...prev,
-      active_factory_id: data.factory_id,
-      server_epoch: data.server_epoch,
-    }));
-  };
-
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#F4F7FC' }}>
       <Header
         streamHealth={observedState.stream_health}
         factoryId={observedState.active_factory_id}
-        onOpenConnect={() => setIsConnectOpen(true)}
+        onOpenConnect={() => autoConnect(csrfToken, 'http://localhost:8080')}
       />
+
+      {connectError && (
+        <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-xs">
+          {connectError}
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
@@ -280,14 +278,6 @@ export const App: React.FC = () => {
           </div>
         </main>
       </div>
-
-      <ConnectionModal
-        isOpen={isConnectOpen}
-        onClose={() => setIsConnectOpen(false)}
-        onConnect={handleConnect}
-        initialServerUrl={serverUrl}
-        initialProfileId="workshop-cluster"
-      />
     </div>
   );
 };

@@ -37,6 +37,7 @@ class FactoryKafkaProducer:
         self.topics = {
             ".resource-delivered": f"{topic_prefix}.resource-delivered",
             ".job-started": f"{topic_prefix}.job-started",
+            ".assembly-started": f"{topic_prefix}.assembly-started",
             ".part-produced": f"{topic_prefix}.part-produced",
             ".robot-assembled": f"{topic_prefix}.robot-assembled",
             ".factory-state": f"{topic_prefix}.factory-state",
@@ -69,24 +70,44 @@ class FactoryKafkaProducer:
             logger.error(f"Failed to initialize ConfluentProducer: {e}")
             self._producer = None
 
+    def verify_topics_exist(self) -> Tuple[bool, Optional[str]]:
+        """
+        Calls list_topics() to confirm all five expected topics are present in
+        cluster metadata. Returns (True, None) on success or (False, message) if
+        any topic is missing or the metadata fetch fails.
+        Only runs when confluent_kafka is available and the producer is initialised.
+        """
+        if self._producer is None:
+            # Mock / test mode — skip check
+            return True, None
+
+        try:
+            metadata = self._producer.list_topics(timeout=5.0)
+        except Exception as e:
+            return False, f"Failed to fetch cluster metadata: {e}"
+
+        missing = [
+            full_topic
+            for full_topic in self.topics.values()
+            if full_topic not in metadata.topics
+        ]
+        if missing:
+            return False, f"Topics not found in cluster metadata: {', '.join(missing)}"
+        return True, None
+
     def publish_sync(self, topic_suffix: str, key_bytes: bytes, value_bytes: bytes) -> bool:
         """
         Synchronously publish and flush record with delivery confirmation.
+        Returns True only on broker acknowledgment; False on any error.
+        In mock mode (KAFKA_AVAILABLE=False / no producer) returns True immediately.
         """
         full_topic = self.topics.get(topic_suffix)
         if not full_topic:
             raise ValueError(f"Unknown topic suffix: {topic_suffix}")
 
         if self._producer is None:
-            # Mock mode or unconfigured
+            # Mock mode (confluent_kafka not installed in test environment)
             return True
-
-        # Check if bootstrap_servers is dummy / mock
-        if "pkc-" in self.bootstrap_servers or "confluent.cloud" in self.bootstrap_servers:
-            # If using mock dummy keys against mock cloud host during local rehearsal,
-            # allow synchronous delivery simulation without blocking
-            if self.api_key == "MOCK_KEY":
-                return True
 
         delivery_result = {"delivered": False, "error": None}
 
@@ -106,15 +127,10 @@ class FactoryKafkaProducer:
             self._producer.flush(timeout=3.0)
             if delivery_result["error"] is not None:
                 logger.warning(f"Kafka produce delivery failed: {delivery_result['error']}")
-                # If mock key was used, treat as simulated local success
-                if self.api_key == "MOCK_KEY":
-                    return True
                 return False
             return delivery_result["delivered"]
         except Exception as e:
             logger.warning(f"Kafka publish exception: {e}")
-            if self.api_key == "MOCK_KEY":
-                return True
             return False
 
     async def verify_permissions_and_topics(
@@ -134,12 +150,18 @@ class FactoryKafkaProducer:
         All require broker acknowledgment.
         """
         if self._producer is None and not KAFKA_AVAILABLE:
-            # Mock / development pass
+            # Mock / development pass (confluent_kafka not installed)
             return True, None
+
+        # Step 1: confirm topics exist in cluster metadata before attempting writes
+        ok, err = self.verify_topics_exist()
+        if not ok:
+            return False, err
 
         activity_topics = [
             ".resource-delivered",
             ".job-started",
+            ".assembly-started",
             ".part-produced",
             ".robot-assembled",
         ]

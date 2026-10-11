@@ -1,14 +1,14 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import Optional, Callable
-import httpx
+
 from backend.models import EventEnvelope
 from backend.store import InMemProjectionStore
 
 logger = logging.getLogger("hive.consumer")
 
-# Optional confluent_kafka
 try:
     from confluent_kafka import Consumer as ConfluentConsumer, KafkaError
     KAFKA_AVAILABLE = True
@@ -20,9 +20,14 @@ except ImportError:
 
 class EventConsumerManager:
     """
-    Manages event consumption either via direct polling against local Simulation Server
-    or via Confluent Cloud Kafka consumer.
+    Consumes factory events from Confluent Cloud Kafka topics and feeds them
+    into the in-memory projection store.
+
+    Events flow exclusively via Kafka: sim server → Confluent → local consumer → UI.
+    The consumer will not start until Confluent credentials and topic assignments are
+    provided (after the attendee submits the connect dialog).
     """
+
     def __init__(
         self,
         store: InMemProjectionStore,
@@ -69,86 +74,25 @@ class EventConsumerManager:
         logger.info("Event consumer stopped.")
 
     async def _run_consumer(self):
-        # If real Confluent credentials and topics are supplied and KAFKA_AVAILABLE, use Kafka
-        if (
-            KAFKA_AVAILABLE
-            and self.bootstrap_servers
-            and self.api_key
-            and self.api_secret
-            and self.topics
-            and self.consumer_group
-        ):
-            await self._run_kafka_consumer()
-        else:
-            # Fallback direct loop: fetches local simulation server state regularly
-            await self._run_direct_polling_consumer()
-
-    async def _run_direct_polling_consumer(self):
-        """
-        Polls the simulation server's /snapshot and /events endpoints to get full
-        factory.state and activity EventEnvelopes and feeds them into the store.
-
-        This is the local development path. In production, spec_1 publishes the same
-        EventEnvelope payloads to Confluent Kafka topics; the Kafka consumer path
-        (_run_kafka_consumer) handles that case. No business logic differs — both paths
-        ingest identical EventEnvelope structures via store.ingest_envelope().
-        """
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            while self._running:
-                try:
-                    headers = {}
-                    if self.token:
-                        headers["Authorization"] = f"Bearer {self.token}"
-
-                    # 1. Check server epoch — detect restarts
-                    srv_resp = await client.get(f"{self.sim_server_url}/v1/server", headers=headers)
-                    if srv_resp.status_code == 200:
-                        epoch = srv_resp.json().get("server_epoch")
-                        if self.store.server_epoch and self.store.server_epoch != epoch:
-                            self.store.reset_view(None, epoch)
-                        else:
-                            self.store.server_epoch = epoch
-
-                    if self.store.active_factory_id:
-                        base = f"{self.sim_server_url}/v1/factories/{self.store.active_factory_id}"
-
-                        # 2. Pull full factory.state snapshot
-                        snap_resp = await client.get(f"{base}/snapshot", headers=headers)
-                        if snap_resp.status_code == 200:
-                            env = EventEnvelope(**snap_resp.json())
-                            updated = self.store.ingest_envelope(env)
-                            if updated and self.on_event_callback:
-                                await self.on_event_callback(env.model_dump())
-                        elif snap_resp.status_code == 404:
-                            self.store.reset_view(None, self.store.server_epoch)
-
-                        # 3. Pull recent activity events
-                        ev_resp = await client.get(f"{base}/events", headers=headers)
-                        if ev_resp.status_code == 200:
-                            for raw in ev_resp.json().get("events", []):
-                                try:
-                                    act_env = EventEnvelope(**raw)
-                                    ingested = self.store.ingest_envelope(act_env)
-                                    if ingested and self.on_event_callback:
-                                        await self.on_event_callback(act_env.model_dump())
-                                except Exception:
-                                    pass
-
-                    await asyncio.sleep(0.2)
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    logger.debug(f"Direct consumer poll error: {e}")
-                    await asyncio.sleep(1.0)
+        if not (KAFKA_AVAILABLE and self.bootstrap_servers and self.api_key and self.api_secret and self.topics and self.consumer_group):
+            logger.info("Kafka consumer not started: missing credentials or topic assignments. Submit the connect dialog to begin.")
+            return
+        await self._run_kafka_consumer()
 
     async def _run_kafka_consumer(self):
+        # Unique group ID per local session so we always replay from earliest
+        # without reusing committed offsets from a previous session.
+        session_suffix = uuid.uuid4().hex[:8]
+        group_id = f"{self.consumer_group}-{session_suffix}"
+        logger.info(f"Starting Kafka consumer group: {group_id}")
+
         conf = {
             "bootstrap.servers": self.bootstrap_servers,
             "security.protocol": "SASL_SSL",
             "sasl.mechanisms": "PLAIN",
             "sasl.username": self.api_key,
             "sasl.password": self.api_secret,
-            "group.id": f"{self.consumer_group}-session",
+            "group.id": group_id,
             "auto.offset.reset": "earliest",
             "enable.auto.commit": True,
         }
@@ -167,9 +111,30 @@ class EventConsumerManager:
                 raw_val = msg.value().decode("utf-8")
                 data = json.loads(raw_val)
                 env = EventEnvelope(**data)
+
+                # Skip onboarding connection probes — never create log rows
+                if env.event_type == "connection.test":
+                    continue
+
+                # Validate factory identity; mismatches are quarantined, not displayed
+                if self.store.active_factory_id and env.factory_id != self.store.active_factory_id:
+                    logger.debug(
+                        f"Quarantined: factory_id mismatch "
+                        f"(expected {self.store.active_factory_id[:8]}, "
+                        f"got {env.factory_id[:8]})"
+                    )
+                    continue
+                if self.store.server_epoch and env.server_epoch != self.store.server_epoch:
+                    logger.debug(
+                        f"Quarantined: server_epoch mismatch "
+                        f"(expected {self.store.server_epoch[:8]}, "
+                        f"got {env.server_epoch[:8]})"
+                    )
+                    continue
+
                 updated = self.store.ingest_envelope(env)
                 if updated and self.on_event_callback:
-                    await self.on_event_callback(env)
+                    await self.on_event_callback(env.model_dump())
 
             except asyncio.CancelledError:
                 break
