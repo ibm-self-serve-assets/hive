@@ -20,29 +20,29 @@ The existing clock asset may be reused for system time and delivery timing. Use 
 
 | Filename | UI component | Current usage |
 | --- | --- | --- |
-| `assembled-bee-inventory__worker__bee.png` | assembled-bee-inventory → worker → bee | Active |
+| `robot-engineer.png` | assembled-bee-inventory → worker → bee | Active |
 | `event-log__part-produced__status-dot.png` | event-log → part-produced → status-dot | Legacy — unused; event log dots removed |
 | `event-log__resource-received__status-dot.png` | event-log → resource-received → status-dot | Legacy — unused; event log dots removed |
 | `event-log__robot-assembled__status-dot.png` | event-log → robot-assembled → status-dot | Legacy — unused; event log dots removed |
-| `factory-connection__connected__status-dot.png` | factory-connection → connected → status-dot | Active |
+| `factory_status_connected.png` | factory-connection → connected → status-dot | Active |
 | `header__information__info.png` | header → information → info | Optional — not shown in current dashboard |
 | `manufacturing__automated__gear.png` | manufacturing → automated → gear | Optional — not shown in current dashboard |
-| `parts-inventory__actuators__servo.png` | parts-inventory → actuators → servo | Active |
-| `parts-inventory__batteries__battery.png` | parts-inventory → batteries → battery | Active |
-| `parts-inventory__chassis__head-shell.png` | parts-inventory → chassis → head-shell | Active |
-| `parts-inventory__electronics__board.png` | parts-inventory → electronics → board | Active |
-| `parts-manufacturing__actuator-fabrication__servo.png` | parts-manufacturing → actuator-fabrication → servo | Active |
-| `parts-manufacturing__battery-assembly__battery.png` | parts-manufacturing → battery-assembly → battery | Active |
-| `parts-manufacturing__electronics-assembly__board.png` | parts-manufacturing → electronics-assembly → board | Active |
-| `parts-manufacturing__structural-molding__chassis.png` | parts-manufacturing → structural-molding → chassis | Active |
-| `resource-supply__next-delivery__clock.png` | resource-supply → next-delivery → clock | Active |
+| `parts_actuator.png` | parts-inventory → actuators → servo | Active |
+| `parts_battery.png` | parts-inventory → batteries → battery | Active |
+| `parts_chassis.png` | parts-inventory → chassis → head-shell | Active |
+| `parts_electronics.png` | parts-inventory → electronics → board | Active |
+| `parts_actuator.png` | parts-manufacturing → actuator-fabrication → servo | Active |
+| `parts_battery.png` | parts-manufacturing → battery-assembly → battery | Active |
+| `parts_electronics.png` | parts-manufacturing → electronics-assembly → board | Active |
+| `parts_chassis.png` | parts-manufacturing → structural-molding → chassis | Active |
+| `clock.png` | resource-supply → next-delivery → clock | Active |
 | `resource-supply__scheduled-deliveries__truck.png` | resource-supply → scheduled-deliveries → truck | Optional — not shown in current dashboard |
-| `resources__copper__stack.png` | resources → copper → stack | Active |
-| `resources__energy__lightning.png` | resources → energy → lightning | Active |
-| `resources__metals__ingots.png` | Resources → Steel (filename retained for compatibility) | Active |
-| `resources__resin__droplet.png` | resources → resin → droplet | Active |
-| `resources__silicon__chip.png` | resources → silicon → chip | Active |
-| `robot-assembly__worker__bee.png` | robot-assembly → worker → bee | Active |
+| `resource_copper.png` | resources → copper → stack | Active |
+| `resources_energy.png` | resources → energy → lightning | Active |
+| `resources_metals.png` | Resources → Steel (filename retained for compatibility) | Active |
+| `resources_resin.png` | resources → resin → droplet | Active |
+| `resources_silicon.png` | resources → silicon → chip | Active |
+| `robot-engineer.png` | robot-assembly → worker → bee | Active |
 | `simulation-controls__pause__pause.png` | simulation-controls → pause → pause | Active |
 | `simulation-controls__run__play.png` | simulation-controls → run → play | Active |
 | `warning.png` | Manufacturing / Assembly → Input shortage warning | Active |
@@ -57,4 +57,4 @@ The existing clock asset may be reused for system time and delivery timing. Use 
 | Battery | Energy ×2 + Copper ×1 + Steel ×1 |
 | Worker robot | Chassis ×1 + Electronics ×3 + Batteries ×2 + Actuators ×8 |
 
-Robot input icons reuse the corresponding `parts-inventory__*` assets. Steel uses `resources__metals__ingots.png`.
+Robot input icons reuse the corresponding `parts-inventory__*` assets. Steel uses `resources_metals.png`.

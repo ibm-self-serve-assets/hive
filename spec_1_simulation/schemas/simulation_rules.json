@@ -7,7 +7,7 @@
     },
     { "name": "resin",
       "interval_sim_seconds": 10,
-      "quantity": 2
+      "quantity": 3
     },
     { "name": "silicon",
       "interval_sim_seconds": 10,

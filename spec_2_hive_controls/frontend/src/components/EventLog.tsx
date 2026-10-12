@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityEvent } from '../types';
 
 interface EventLogProps {
@@ -6,9 +6,9 @@ interface EventLogProps {
 }
 
 // ── Bucketing ────────────────────────────────────────────────────────────────
-type Bucket = 'resource' | 'manufacturing' | 'assembly';
+export type Bucket = 'resource' | 'manufacturing' | 'assembly';
 
-function getBucket(eventType: string): Bucket {
+export function getBucket(eventType: string): Bucket {
   if (eventType === 'resource.delivered') return 'resource';
   if (
     eventType === 'assembly.started' ||
@@ -54,8 +54,6 @@ function formatDetails(ev: ActivityEvent): string {
 }
 
 function formatTime(ev: ActivityEvent): string {
-  // Always show simulation time (HH:MM:SS) so the clock matches the sim clock
-  // in the sidebar — not the user's wall clock which is unrelated to the sim.
   const s = Math.floor(ev.sim_time_ms / 1000);
   const hh = String(Math.floor(s / 3600)).padStart(2, '0');
   const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
@@ -68,57 +66,94 @@ interface PanelProps {
   title: string;
   events: ActivityEvent[];
   accentColor: string;
+  style?: React.CSSProperties;
 }
 
-const Panel: React.FC<PanelProps> = ({ title, events, accentColor }) => (
-  <div className="flex-1 min-w-0 min-h-0 bg-white rounded-lg border border-[#CCDDFF] overflow-hidden flex flex-col">
-    {/* Title */}
-    <div className="px-4 py-3 border-b border-[#E6EEFF] shrink-0">
-      <h3 className="font-bold text-sm" style={{ color: accentColor }}>{title}</h3>
-    </div>
+export const Panel: React.FC<PanelProps> = ({ title, events, accentColor, style }) => {
+  const [collapsed, setCollapsed] = useState(false);
 
-    {/* Rows — flex-1 + min-h-0 constrains scroll to whatever height the panel has */}
-    <div className="divide-y divide-[#F0F4FF] overflow-y-auto flex-1 min-h-0">
-      {events.length === 0 ? (
-        <div className="px-4 py-6 text-center text-xs text-[#8AA0D0] italic">
-          No events yet.
+  return (
+    <div
+      className="min-w-0 bg-white rounded-lg border border-[#CCDDFF] flex flex-col"
+      style={{
+        ...style,
+        flex: style?.flex ?? '1 1 0',
+        minHeight: 0,
+        overflow: collapsed ? 'visible' : 'hidden',
+        alignSelf: collapsed ? 'flex-start' : 'stretch',
+      }}
+    >
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-[#E6EEFF] shrink-0 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-bold text-sm truncate" style={{ color: accentColor }}>{title}</h3>
+          <span
+            className="text-xs font-semibold tabular-nums px-1.5 py-0.5 rounded"
+            style={{ background: '#EEF3FF', color: accentColor }}
+          >
+            {events.length}
+          </span>
         </div>
-      ) : (
-        events.map((ev) => {
-          const isBlocked = ev.event_type === 'manufacturing.blocked' || ev.event_type === 'assembly.blocked';
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          className="shrink-0 flex items-center justify-center rounded hover:bg-[#EEF3FF] transition-colors"
+          style={{ width: 22, height: 22, border: 'none', background: 'none', cursor: 'pointer', color: '#57606a' }}
+        >
+          {/* Chevron — points up when expanded, down when collapsed */}
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d={collapsed ? 'M2 4l4 4 4-4' : 'M2 8l4-4 4 4'}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
 
-          return (
-            <div
-              key={ev.event_id}
-              className="flex items-start gap-3 px-4 py-2.5 hover:bg-[#F7FAFF]"
-            >
-              {/* Time — fixed width, vertically centered against the two lines on the right */}
-              <span
-                className="font-mono text-[11px] text-[#57606a] shrink-0 pt-px"
-                style={{ width: '54px', lineHeight: '1.6' }}
-              >
-                {formatTime(ev)}
-              </span>
-
-              {/* Right column: event type + detail */}
-              <div className="min-w-0 flex-1">
-                <div
-                  className="text-xs font-semibold leading-tight"
-                  style={{ color: isBlocked ? '#B45309' : '#2850B8' }}
-                >
-                  {ev.event_type}
-                </div>
-                <div className="text-xs text-[#1f2328] mt-0.5 leading-tight">
-                  {formatDetails(ev)}
-                </div>
-              </div>
+      {/* Rows — only rendered when expanded */}
+      {!collapsed && (
+        <div className="divide-y divide-[#F0F4FF] overflow-y-auto flex-1 min-h-0">
+          {events.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-[#8AA0D0] italic">
+              No events yet.
             </div>
-          );
-        })
+          ) : (
+            events.map((ev) => {
+              const isBlocked = ev.event_type === 'manufacturing.blocked' || ev.event_type === 'assembly.blocked';
+              return (
+                <div
+                  key={ev.event_id}
+                  className="flex items-start gap-3 px-4 py-2.5 hover:bg-[#F7FAFF]"
+                >
+                  <span
+                    className="font-mono text-[11px] text-[#57606a] shrink-0 pt-px"
+                    style={{ width: '54px', lineHeight: '1.6' }}
+                  >
+                    {formatTime(ev)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="text-xs font-semibold leading-tight"
+                      style={{ color: isBlocked ? '#B45309' : '#2850B8' }}
+                    >
+                      {ev.event_type}
+                    </div>
+                    <div className="text-xs text-[#1f2328] mt-0.5 leading-tight">
+                      {formatDetails(ev)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
     </div>
-  </div>
-);
+  );
+};
 
 // ── Main component ────────────────────────────────────────────────────────────
 export const EventLog: React.FC<EventLogProps> = ({ events }) => {
@@ -127,7 +162,7 @@ export const EventLog: React.FC<EventLogProps> = ({ events }) => {
   const assemblyEvents      = events.filter((e) => getBucket(e.event_type) === 'assembly');
 
   return (
-    <div className="flex gap-4 flex-1 min-h-0">
+    <div className="flex gap-4 flex-1 min-h-0" style={{ alignItems: 'flex-start' }}>
       <Panel title="Resource events"      events={resourceEvents}      accentColor="#2850B8" />
       <Panel title="Manufacturing events" events={manufacturingEvents} accentColor="#2850B8" />
       <Panel title="Assembly events"      events={assemblyEvents}      accentColor="#2850B8" />

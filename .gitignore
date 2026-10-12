@@ -8,3 +8,4 @@ __pycache__/
 dist/
 coverage/
 playwright-report/
+.DS_Store

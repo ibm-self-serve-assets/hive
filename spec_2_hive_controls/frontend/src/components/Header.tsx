@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ streamHealth, factoryId: _factor
         >
           <div className="flex items-center gap-1.5">
             {isLive ? (
-              <img src="/icons/factory-connection__connected__status-dot.png" width={10} height={10} alt="live" />
+              <img src="/icons/factory_status_connected.png" width={10} height={10} alt="live" />
             ) : (
               <span className={`w-2 h-2 rounded-full ${streamHealth === 'stale' ? 'bg-amber-400' : 'bg-[#4A5A8A]'}`} />
             )}

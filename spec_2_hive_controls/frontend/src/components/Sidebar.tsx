@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* ── System time ── */}
         <section>
           <div className="flex items-center gap-2 text-[#8AA0D0] text-xs mb-1">
-            <img src="/icons/resource-supply__next-delivery__clock.png" width={16} height={16} alt="clock" className="shrink-0 opacity-70" />
+            <img src="/icons/clock.png" width={16} height={16} alt="clock" className="shrink-0 opacity-70" />
             <span>System time</span>
           </div>
           <div className="font-bold font-mono text-white text-xl tabular-nums tracking-tight">
