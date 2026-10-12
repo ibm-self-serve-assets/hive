@@ -39,7 +39,7 @@ class FactoryStatePayload(BaseModel):
     resources: Dict[str, int] = Field(default_factory=dict)
     parts: Dict[str, int] = Field(default_factory=dict)
     stations: List[StationState] = Field(default_factory=list)
-    completed_workers: CompletedWorkersState = Field(default_factory=CompletedWorkersState)
+    completed_robots: CompletedWorkersState = Field(default_factory=CompletedWorkersState)
     last_applied_command_id: Optional[str] = None
 
 

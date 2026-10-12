@@ -8,6 +8,7 @@ from server.models import (
     StationState,
     StationJobState,
     CompletedWorkersState,
+    ResourceDeliveryState,
     FactoryStatePayload,
     OperationalError,
     EventEnvelope,
@@ -67,33 +68,29 @@ class SimulationRun:
         self.state_revision: int = 0
         self.station_cursor: int = 0
 
-        self.resources: Dict[str, int] = {
-            "resin": 0,
-            "silicon": 0,
-            "metals": 0,
-            "copper": 0,
-            "energy": 0,
-        }
-        self.parts: Dict[str, int] = {
-            "chassis": 0,
-            "electronics": 0,
-            "actuator": 0,
-            "battery": 0,
-        }
+        self.rules: SimulationRules = get_simulation_rules()
+
+        # Resources — initialised from rules so the dict always contains every resource name
+        self.resources: Dict[str, int] = {r.name: 0 for r in self.rules.resources}
+
+        self.parts: Dict[str, int] = {p: 0 for p in self.rules.parts}
 
         self.delivery_sequence: int = 0
-        self.next_delivery_sim_time_ms: int = 0  # Due at time zero once started
+
+        # Per-resource delivery timers: resource_name → next sim-ms when that resource fires
+        # All start at 0 so the first delivery lands at sim-time zero when the run starts.
+        self.next_delivery_sim_time_ms: Dict[str, int] = {
+            r.name: 0 for r in self.rules.resources
+        }
 
         self.active_jobs: Dict[str, ActiveJob] = {}  # station_id -> ActiveJob
-        self.completed_workers_count: int = 0
+        self.completed_robots_count: int = 0
         self.last_robot_id: Optional[str] = None
         self.last_applied_command_id: Optional[str] = None
 
-        # Tracks which stations are currently in a blocked state so manufacturing.blocked
-        # events are only emitted on entry (transition into blocked), not on every scheduling pass.
+        # Tracks which stations are currently in a blocked state so manufacturing.blocked /
+        # assembly.blocked events are only emitted on entry (transition into blocked), not every pass.
         self._blocked_stations: set = set()
-
-        self.rules: SimulationRules = get_simulation_rules()
 
     def advance_to(
         self,
@@ -113,32 +110,36 @@ class SimulationRun:
         emitted_events: List[Tuple[str, EventEnvelope]] = []
 
         while self.sim_time_ms < target_sim_time_ms:
-            # Find next deadline
+            # Find next deadline — earliest across all per-resource timers and job completions
             next_deadline = target_sim_time_ms
 
-            # 1. Delivery deadline
-            if self.next_delivery_sim_time_ms <= target_sim_time_ms:
-                if self.next_delivery_sim_time_ms >= self.sim_time_ms:
-                    next_deadline = min(next_deadline, self.next_delivery_sim_time_ms)
+            # 1. Per-resource delivery deadlines
+            for res_cfg in self.rules.resources:
+                t = self.next_delivery_sim_time_ms[res_cfg.name]
+                if self.sim_time_ms <= t <= target_sim_time_ms:
+                    next_deadline = min(next_deadline, t)
 
             # 2. Job completion deadlines
             for job in self.active_jobs.values():
-                if job.completes_at_sim_ms <= target_sim_time_ms:
-                    if job.completes_at_sim_ms >= self.sim_time_ms:
-                        next_deadline = min(next_deadline, job.completes_at_sim_ms)
+                if self.sim_time_ms <= job.completes_at_sim_ms <= target_sim_time_ms:
+                    next_deadline = min(next_deadline, job.completes_at_sim_ms)
 
-            # If next_deadline is greater than target_sim_time_ms, we can jump to target
             instant = next_deadline
             self.sim_time_ms = instant
 
             # Process instant steps:
-            # 1. Apply any due delivery
+            # 1. Apply all resource deliveries due at this instant
             delivery_applied = False
-            if self.next_delivery_sim_time_ms == instant:
-                events = self._apply_delivery(instant, occurred_iso, event_seq_generator)
-                emitted_events.extend(events)
-                delivery_applied = True
-                self.next_delivery_sim_time_ms += self.rules.delivery.interval_sim_seconds * 1000
+            for res_cfg in self.rules.resources:
+                if self.next_delivery_sim_time_ms[res_cfg.name] == instant:
+                    events = self._apply_single_resource_delivery(
+                        res_cfg.name, res_cfg.quantity, instant, occurred_iso, event_seq_generator
+                    )
+                    emitted_events.extend(events)
+                    delivery_applied = True
+                    self.next_delivery_sim_time_ms[res_cfg.name] = (
+                        instant + res_cfg.interval_sim_seconds * 1000
+                    )
 
             # 2. Finish all jobs due at this instant
             finished_jobs = [
@@ -151,12 +152,11 @@ class SimulationRun:
                 emitted_events.extend(events)
                 jobs_completed = True
 
-            # 3. Schedule pass if delivery or job completed or on init
+            # 3. Schedule pass if delivery or job completed
             if delivery_applied or jobs_completed:
                 start_events = self._run_scheduling_pass(instant, occurred_iso, event_seq_generator)
                 emitted_events.extend(start_events)
 
-            # If no deadlines matched between sim_time_ms and target, break
             if instant == target_sim_time_ms:
                 break
 
@@ -168,35 +168,42 @@ class SimulationRun:
         occurred_at: Optional[str] = None,
     ) -> List[Tuple[str, EventEnvelope]]:
         """
-        Run initial scheduling pass at current sim time (e.g., on start).
+        Run initial scheduling pass at current sim time (e.g., on start/resume).
+        Resources start at zero — the first delivery fires after one full interval,
+        not at time zero. Advance timers past zero so advance_to doesn't fire them
+        immediately on the first tick.
         """
         occurred_iso = occurred_at or datetime.now(timezone.utc).isoformat()
-        emitted_events: List[Tuple[str, EventEnvelope]] = []
-        
-        # If at time 0 and next delivery is at 0, apply first delivery
-        if self.sim_time_ms == 0 and self.next_delivery_sim_time_ms == 0:
-            events = self._apply_delivery(0, occurred_iso, event_seq_generator)
-            emitted_events.extend(events)
-            self.next_delivery_sim_time_ms = self.rules.delivery.interval_sim_seconds * 1000
 
-        start_events = self._run_scheduling_pass(self.sim_time_ms, occurred_iso, event_seq_generator)
-        emitted_events.extend(start_events)
-        return emitted_events
+        if self.sim_time_ms == 0:
+            for res_cfg in self.rules.resources:
+                if self.next_delivery_sim_time_ms[res_cfg.name] == 0:
+                    # Push first delivery to the end of the first interval
+                    self.next_delivery_sim_time_ms[res_cfg.name] = (
+                        res_cfg.interval_sim_seconds * 1000
+                    )
 
-    def _apply_delivery(
+        # No scheduling pass at time zero — stations have no resources yet
+        return []
+
+    def _apply_single_resource_delivery(
         self,
+        resource_name: str,
+        quantity: int,
         instant_ms: int,
         occurred_iso: str,
         event_seq_generator,
     ) -> List[Tuple[str, EventEnvelope]]:
+        """Deliver one resource type and emit a resource.delivered event for it."""
         self.delivery_sequence += 1
         self.state_revision += 1
         delivery_id = str(uuid.uuid4())
-        
-        # Add resources
-        bundle = dict(self.rules.delivery.resources)
-        for r, qty in bundle.items():
-            self.resources[r] = self.resources.get(r, 0) + qty
+
+        self.resources[resource_name] = self.resources.get(resource_name, 0) + quantity
+
+        # Event payload: only the delivered resource, all others zero
+        bundle = {r.name: 0 for r in self.rules.resources}
+        bundle[resource_name] = quantity
 
         payload = ResourceDeliveredPayload(
             delivery_id=delivery_id,
@@ -241,7 +248,7 @@ class SimulationRun:
             )
             event = EventEnvelope(
                 event_id=str(uuid.uuid4()),
-                event_type="part.produced",
+                event_type="manufacturing.completed",
                 schema_version=1,
                 factory_id=self.factory_id,
                 server_epoch=self.server_epoch,
@@ -254,21 +261,21 @@ class SimulationRun:
                 causation_id=job.started_event_id,
                 payload=payload.model_dump(),
             )
-            events.append((".part-produced", event))
+            events.append((".manufacturing-completed", event))
         elif job.output_type == "robot":
-            self.completed_workers_count += 1
+            self.completed_robots_count += 1
             robot_id = str(uuid.uuid4())
             self.last_robot_id = robot_id
             payload = RobotAssembledPayload(
                 job_id=job.job_id,
                 robot_id=robot_id,
                 robot_type="worker",
-                display_number=self.completed_workers_count,
+                display_number=self.completed_robots_count,
                 quantity=1,
             )
             event = EventEnvelope(
                 event_id=str(uuid.uuid4()),
-                event_type="robot.assembled",
+                event_type="assembly.completed",
                 schema_version=1,
                 factory_id=self.factory_id,
                 server_epoch=self.server_epoch,
@@ -281,7 +288,7 @@ class SimulationRun:
                 causation_id=job.started_event_id,
                 payload=payload.model_dump(),
             )
-            events.append((".robot-assembled", event))
+            events.append((".assembly-completed", event))
 
         return events
 
@@ -292,47 +299,44 @@ class SimulationRun:
         event_seq_generator,
     ) -> List[Tuple[str, EventEnvelope]]:
         """
-        Deterministic rotating starting position through the 5 stations.
-        While any station can start, we loop until no more stations can start at this instant.
-        Each pass rotates cursor by 1.
+        Deterministic rotating starting position through all stations (manufacturing + assembly).
+        Loops until a full pass starts no new jobs; cursor advances by 1 each pass.
         """
         emitted_events: List[Tuple[str, EventEnvelope]] = []
         station_order = self.rules.station_order
         n = len(station_order)
 
-        # We may be able to start multiple jobs consecutively (e.g. if one finished or resources allow multiple)
         while True:
             started_any = False
             start_cursor = self.station_cursor
-            
+
             for i in range(n):
                 idx = (start_cursor + i) % n
                 st_id = station_order[idx]
-                
-                # Check if station is idle
+
                 if st_id in self.active_jobs:
-                    # Station is running — clear any blocked state for it
                     self._blocked_stations.discard(st_id)
                     continue
-                
-                recipe = self.rules.stations[st_id]
-                can_start = True
-                
-                if recipe.output_type == "part":
+
+                # Resolve recipe from new structure
+                mfg = self.rules.get_manufacturing(st_id)
+                is_part_station = mfg is not None
+                is_assembly = st_id == self.rules.worker_assembly.station_id
+
+                if is_part_station:
+                    inputs = mfg.inputs
+                    duration_ms = mfg.duration_ms
+                    output_id = mfg.output_id
+                    can_start = True
                     missing: Dict[str, int] = {}
-                    for res, qty in recipe.inputs.items():
+                    for res, qty in inputs.items():
                         if self.resources.get(res, 0) < qty:
                             can_start = False
                             missing[res] = qty - self.resources.get(res, 0)
                     if not can_start:
-                        # Only emit manufacturing.blocked on transition into blocked state
                         if st_id not in self._blocked_stations:
                             self._blocked_stations.add(st_id)
-                            blocked_payload = ManufacturingBlockedPayload(
-                                station_id=st_id,
-                                missing_inputs=missing,
-                            )
-                            blocked_event = EventEnvelope(
+                            emitted_events.append((".manufacturing-blocked", EventEnvelope(
                                 event_id=str(uuid.uuid4()),
                                 event_type="manufacturing.blocked",
                                 schema_version=1,
@@ -345,42 +349,31 @@ class SimulationRun:
                                 occurred_at=occurred_iso,
                                 sim_time_ms=instant_ms,
                                 causation_id=None,
-                                payload=blocked_payload.model_dump(),
-                            )
-                            emitted_events.append((".manufacturing-blocked", blocked_event))
+                                payload=ManufacturingBlockedPayload(
+                                    station_id=st_id, missing_inputs=missing,
+                                ).model_dump(),
+                            )))
                     if can_start:
-                        # Station unblocked — clear blocked state and start job
                         self._blocked_stations.discard(st_id)
-                        # Deduct inputs atomically
-                        for res, qty in recipe.inputs.items():
+                        for res, qty in inputs.items():
                             self.resources[res] -= qty
-                        
                         job_id = str(uuid.uuid4())
                         started_event_id = str(uuid.uuid4())
-                        job = ActiveJob(
+                        self.active_jobs[st_id] = ActiveJob(
                             job_id=job_id,
                             station_id=st_id,
-                            output_id=recipe.output_id,
-                            output_type=recipe.output_type,
+                            output_id=output_id,
+                            output_type="part",
                             started_at_sim_ms=instant_ms,
-                            completes_at_sim_ms=instant_ms + recipe.duration_ms,
-                            duration_ms=recipe.duration_ms,
-                            consumed_inputs=dict(recipe.inputs),
+                            completes_at_sim_ms=instant_ms + duration_ms,
+                            duration_ms=duration_ms,
+                            consumed_inputs=dict(inputs),
                             started_event_id=started_event_id,
                         )
-                        self.active_jobs[st_id] = job
                         self.state_revision += 1
-
-                        payload = JobStartedPayload(
-                            job_id=job_id,
-                            station_id=st_id,
-                            output_id=recipe.output_id,
-                            inputs=dict(recipe.inputs),
-                            duration_ms=recipe.duration_ms,
-                        )
-                        event = EventEnvelope(
+                        emitted_events.append((".manufacturing-started", EventEnvelope(
                             event_id=started_event_id,
-                            event_type="job.started",
+                            event_type="manufacturing.started",
                             schema_version=1,
                             factory_id=self.factory_id,
                             server_epoch=self.server_epoch,
@@ -391,28 +384,35 @@ class SimulationRun:
                             occurred_at=occurred_iso,
                             sim_time_ms=instant_ms,
                             causation_id=None,
-                            payload=payload.model_dump(),
-                        )
-                        emitted_events.append((".job-started", event))
+                            payload=JobStartedPayload(
+                                job_id=job_id,
+                                station_id=st_id,
+                                output_id=output_id,
+                                inputs=dict(inputs),
+                                duration_ms=duration_ms,
+                            ).model_dump(),
+                        )))
                         started_any = True
-                
-                elif recipe.output_type == "robot":
+
+                elif is_assembly:
+                    wa = self.rules.worker_assembly
+                    # Use the first robot type's duration
+                    robot_cfg = wa.robots[0]
+                    inputs_a = wa.inputs
+                    duration_ms_a = robot_cfg.duration_ms
+                    robot_type = robot_cfg.name
+                    can_start = True
                     missing_parts: Dict[str, int] = {}
-                    for part, qty in recipe.inputs.items():
+                    for part, qty in inputs_a.items():
                         if self.parts.get(part, 0) < qty:
                             can_start = False
                             missing_parts[part] = qty - self.parts.get(part, 0)
                     if not can_start:
-                        # Only emit manufacturing.blocked on transition into blocked state
                         if st_id not in self._blocked_stations:
                             self._blocked_stations.add(st_id)
-                            blocked_payload = ManufacturingBlockedPayload(
-                                station_id=st_id,
-                                missing_inputs=missing_parts,
-                            )
-                            blocked_event = EventEnvelope(
+                            emitted_events.append((".assembly-blocked", EventEnvelope(
                                 event_id=str(uuid.uuid4()),
-                                event_type="manufacturing.blocked",
+                                event_type="assembly.blocked",
                                 schema_version=1,
                                 factory_id=self.factory_id,
                                 server_epoch=self.server_epoch,
@@ -423,39 +423,29 @@ class SimulationRun:
                                 occurred_at=occurred_iso,
                                 sim_time_ms=instant_ms,
                                 causation_id=None,
-                                payload=blocked_payload.model_dump(),
-                            )
-                            emitted_events.append((".manufacturing-blocked", blocked_event))
+                                payload=ManufacturingBlockedPayload(
+                                    station_id=st_id, missing_inputs=missing_parts,
+                                ).model_dump(),
+                            )))
                     if can_start:
-                        # Station unblocked — clear blocked state and deduct parts atomically
                         self._blocked_stations.discard(st_id)
-                        for part, qty in recipe.inputs.items():
+                        for part, qty in inputs_a.items():
                             self.parts[part] -= qty
-
                         job_id = str(uuid.uuid4())
                         started_event_id = str(uuid.uuid4())
-                        job = ActiveJob(
+                        self.active_jobs[st_id] = ActiveJob(
                             job_id=job_id,
                             station_id=st_id,
-                            output_id=recipe.output_id,
-                            output_type=recipe.output_type,
+                            output_id=robot_type,
+                            output_type="robot",
                             started_at_sim_ms=instant_ms,
-                            completes_at_sim_ms=instant_ms + recipe.duration_ms,
-                            duration_ms=recipe.duration_ms,
-                            consumed_inputs=dict(recipe.inputs),
+                            completes_at_sim_ms=instant_ms + duration_ms_a,
+                            duration_ms=duration_ms_a,
+                            consumed_inputs=dict(inputs_a),
                             started_event_id=started_event_id,
                         )
-                        self.active_jobs[st_id] = job
                         self.state_revision += 1
-
-                        payload = AssemblyStartedPayload(
-                            job_id=job_id,
-                            station_id=st_id,
-                            robot_type=recipe.output_id,
-                            inputs=dict(recipe.inputs),
-                            duration_ms=recipe.duration_ms,
-                        )
-                        event = EventEnvelope(
+                        emitted_events.append((".assembly-started", EventEnvelope(
                             event_id=started_event_id,
                             event_type="assembly.started",
                             schema_version=1,
@@ -468,14 +458,17 @@ class SimulationRun:
                             occurred_at=occurred_iso,
                             sim_time_ms=instant_ms,
                             causation_id=None,
-                            payload=payload.model_dump(),
-                        )
-                        emitted_events.append((".assembly-started", event))
+                            payload=AssemblyStartedPayload(
+                                job_id=job_id,
+                                station_id=st_id,
+                                robot_type=robot_type,
+                                inputs=dict(inputs_a),
+                                duration_ms=duration_ms_a,
+                            ).model_dump(),
+                        )))
                         started_any = True
 
-            # Advance cursor by 1 for this scheduling pass
             self.station_cursor = (self.station_cursor + 1) % n
-
             if not started_any:
                 break
 
@@ -485,7 +478,9 @@ class SimulationRun:
         station_states: List[StationState] = []
 
         for st_id in self.rules.station_order:
-            recipe = self.rules.stations[st_id]
+            # Determine output_type and inputs for idle-state missing-input calculation
+            mfg = self.rules.get_manufacturing(st_id)
+            is_assembly = st_id == self.rules.worker_assembly.station_id
             if st_id in self.active_jobs:
                 job = self.active_jobs[st_id]
                 elapsed = max(0, self.sim_time_ms - job.started_at_sim_ms)
@@ -509,18 +504,20 @@ class SimulationRun:
                 )
             else:
                 missing: Dict[str, int] = {}
-                if recipe.output_type == "part":
-                    for res, req_qty in recipe.inputs.items():
+                if mfg is not None:
+                    for res, req_qty in mfg.inputs.items():
                         avail = self.resources.get(res, 0)
                         if avail < req_qty:
                             missing[res] = req_qty - avail
                     st_status = "waiting_for_resources" if missing else "idle"
-                else:
-                    for part, req_qty in recipe.inputs.items():
+                elif is_assembly:
+                    for part, req_qty in self.rules.worker_assembly.inputs.items():
                         avail = self.parts.get(part, 0)
                         if avail < req_qty:
                             missing[part] = req_qty - avail
                     st_status = "waiting_for_parts" if missing else "idle"
+                else:
+                    st_status = "idle"
 
                 station_states.append(
                     StationState(
@@ -531,21 +528,33 @@ class SimulationRun:
                     )
                 )
 
-        next_in = max(0, self.next_delivery_sim_time_ms - self.sim_time_ms)
+        # Build per-resource delivery states
+        resource_deliveries: List[ResourceDeliveryState] = []
         is_running = self.lifecycle_status == "running" and self.operational_error is None
+        for res_cfg in self.rules.resources:
+            next_t = self.next_delivery_sim_time_ms[res_cfg.name]
+            remaining_sim_ms = max(0, next_t - self.sim_time_ms)
+            resource_deliveries.append(
+                ResourceDeliveryState(
+                    name=res_cfg.name,
+                    interval_sim_ms=res_cfg.interval_sim_seconds * 1000,
+                    next_delivery_sim_time_ms=next_t,
+                    next_delivery_in_ms=remaining_sim_ms,
+                    quantity=res_cfg.quantity,
+                )
+            )
 
         return FactoryStatePayload(
             lifecycle_status=self.lifecycle_status,
             running=is_running,
             operational_error=self.operational_error,
             speed=self.speed,
-            next_delivery_sim_time_ms=self.next_delivery_sim_time_ms,
-            next_delivery_in_ms=next_in,
+            resource_deliveries=resource_deliveries,
             resources=dict(self.resources),
             parts=dict(self.parts),
             stations=station_states,
-            completed_workers=CompletedWorkersState(
-                count=self.completed_workers_count,
+            completed_robots=CompletedWorkersState(
+                count=self.completed_robots_count,
                 last_robot_id=self.last_robot_id,
             ),
             last_applied_command_id=self.last_applied_command_id,

@@ -8,18 +8,13 @@ interface EventLogProps {
 // ── Bucketing ────────────────────────────────────────────────────────────────
 type Bucket = 'resource' | 'manufacturing' | 'assembly';
 
-function getBucket(eventType: string, payload?: Record<string, any>): Bucket {
+function getBucket(eventType: string): Bucket {
+  if (eventType === 'resource.delivered') return 'resource';
   if (
-    eventType === 'resource.delivered' ||
-    eventType === 'resource.received'
-  ) return 'resource';
-  if (
-    eventType === 'robot.assembled' ||
-    eventType === 'assembly.started'
+    eventType === 'assembly.started' ||
+    eventType === 'assembly.completed' ||
+    eventType === 'assembly.blocked'
   ) return 'assembly';
-  // worker_assembly events → assembly panel
-  if (payload?.station_id === 'worker_assembly') return 'assembly';
-  // part.produced, job.started (other stations), manufacturing.blocked → manufacturing
   return 'manufacturing';
 }
 
@@ -35,27 +30,24 @@ function formatDetails(ev: ActivityEvent): string {
         .join(', ');
       return parts || 'Delivery';
     }
-    case 'part.produced':
-      return `${p.part_id ? p.part_id.charAt(0).toUpperCase() + p.part_id.slice(1) : ''} +1`;
-    case 'job.started':
-      if (p.station_id === 'worker_assembly') {
-        return `Worker assembly started`;
-      }
+    case 'manufacturing.started':
       return `${(p.station_id ?? '').replace(/_/g, ' ')} → ${p.output_id ?? ''}`;
+    case 'manufacturing.completed':
+      return `${p.part_id ? p.part_id.charAt(0).toUpperCase() + p.part_id.slice(1) : ''} +1`;
     case 'manufacturing.blocked': {
       const missing = p.missing_inputs ?? {};
-      const items = Object.entries(missing)
-        .map(([k, v]) => `${k} (need ${v})`)
-        .join(', ');
-      if (p.station_id === 'worker_assembly') {
-        return `Waiting for parts: ${items}`;
-      }
+      const items = Object.entries(missing).map(([k, v]) => `${k} (need ${v})`).join(', ');
       return `${(p.station_id ?? '').replace(/_/g, ' ')}: ${items}`;
     }
-    case 'robot.assembled':
-      return `Worker W-${String(p.display_number ?? 0).padStart(3, '0')} added to inventory`;
     case 'assembly.started':
       return `Worker W-${String(p.display_number ?? 0).padStart(3, '0')}`;
+    case 'assembly.completed':
+      return `Worker W-${String(p.display_number ?? 0).padStart(3, '0')} added to inventory`;
+    case 'assembly.blocked': {
+      const missing = p.missing_inputs ?? {};
+      const items = Object.entries(missing).map(([k, v]) => `${k} (need ${v})`).join(', ');
+      return `Waiting for parts: ${items}`;
+    }
     default:
       return ev.summary || ev.event_type;
   }
@@ -79,21 +71,21 @@ interface PanelProps {
 }
 
 const Panel: React.FC<PanelProps> = ({ title, events, accentColor }) => (
-  <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#CCDDFF] overflow-hidden flex flex-col">
+  <div className="flex-1 min-w-0 min-h-0 bg-white rounded-lg border border-[#CCDDFF] overflow-hidden flex flex-col">
     {/* Title */}
-    <div className="px-4 py-3 border-b border-[#E6EEFF]">
+    <div className="px-4 py-3 border-b border-[#E6EEFF] shrink-0">
       <h3 className="font-bold text-sm" style={{ color: accentColor }}>{title}</h3>
     </div>
 
-    {/* Rows */}
-    <div className="divide-y divide-[#F0F4FF] overflow-y-auto" style={{ maxHeight: '200px' }}>
+    {/* Rows — flex-1 + min-h-0 constrains scroll to whatever height the panel has */}
+    <div className="divide-y divide-[#F0F4FF] overflow-y-auto flex-1 min-h-0">
       {events.length === 0 ? (
         <div className="px-4 py-6 text-center text-xs text-[#8AA0D0] italic">
           No events yet.
         </div>
       ) : (
         events.map((ev) => {
-          const isBlocked = ev.event_type === 'manufacturing.blocked';
+          const isBlocked = ev.event_type === 'manufacturing.blocked' || ev.event_type === 'assembly.blocked';
 
           return (
             <div
@@ -130,12 +122,12 @@ const Panel: React.FC<PanelProps> = ({ title, events, accentColor }) => (
 
 // ── Main component ────────────────────────────────────────────────────────────
 export const EventLog: React.FC<EventLogProps> = ({ events }) => {
-  const resourceEvents      = events.filter((e) => getBucket(e.event_type, e.payload) === 'resource');
-  const manufacturingEvents = events.filter((e) => getBucket(e.event_type, e.payload) === 'manufacturing');
-  const assemblyEvents      = events.filter((e) => getBucket(e.event_type, e.payload) === 'assembly');
+  const resourceEvents      = events.filter((e) => getBucket(e.event_type) === 'resource');
+  const manufacturingEvents = events.filter((e) => getBucket(e.event_type) === 'manufacturing');
+  const assemblyEvents      = events.filter((e) => getBucket(e.event_type) === 'assembly');
 
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 flex-1 min-h-0">
       <Panel title="Resource events"      events={resourceEvents}      accentColor="#2850B8" />
       <Panel title="Manufacturing events" events={manufacturingEvents} accentColor="#2850B8" />
       <Panel title="Assembly events"      events={assemblyEvents}      accentColor="#2850B8" />

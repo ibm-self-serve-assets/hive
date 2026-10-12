@@ -36,10 +36,12 @@ class FactoryKafkaProducer:
 
         self.topics = {
             ".resource-delivered": f"{topic_prefix}.resource-delivered",
-            ".job-started": f"{topic_prefix}.job-started",
+            ".manufacturing-started": f"{topic_prefix}.manufacturing-started",
+            ".manufacturing-completed": f"{topic_prefix}.manufacturing-completed",
+            ".manufacturing-blocked": f"{topic_prefix}.manufacturing-blocked",
             ".assembly-started": f"{topic_prefix}.assembly-started",
-            ".part-produced": f"{topic_prefix}.part-produced",
-            ".robot-assembled": f"{topic_prefix}.robot-assembled",
+            ".assembly-completed": f"{topic_prefix}.assembly-completed",
+            ".assembly-blocked": f"{topic_prefix}.assembly-blocked",
             ".factory-state": f"{topic_prefix}.factory-state",
         }
 
@@ -160,10 +162,12 @@ class FactoryKafkaProducer:
 
         activity_topics = [
             ".resource-delivered",
-            ".job-started",
+            ".manufacturing-started",
+            ".manufacturing-completed",
+            ".manufacturing-blocked",
             ".assembly-started",
-            ".part-produced",
-            ".robot-assembled",
+            ".assembly-completed",
+            ".assembly-blocked",
         ]
 
         # 1. Probes on 4 activity topics

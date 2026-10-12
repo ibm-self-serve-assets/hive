@@ -49,14 +49,14 @@ def test_schema_conformance(schemas):
         validator.validate(ev.model_dump())
         if ev.event_type == "resource.delivered":
             Draft202012Validator(payloads_schema["definitions"]["resource_delivered"]).validate(ev.payload)
-        elif ev.event_type == "job.started":
+        elif ev.event_type == "manufacturing.started":
             Draft202012Validator(payloads_schema["definitions"]["job_started"]).validate(ev.payload)
 
     # 3. Advance to completion
     events_adv = sim.advance_to(10000, event_seq_generator=gen_seq)
     for topic_suffix, ev in events_adv:
         validator.validate(ev.model_dump())
-        if ev.event_type == "part.produced":
+        if ev.event_type == "manufacturing.completed":
             Draft202012Validator(payloads_schema["definitions"]["part_produced"]).validate(ev.payload)
-        elif ev.event_type == "robot.assembled":
+        elif ev.event_type == "assembly.completed":  # unchanged
             Draft202012Validator(payloads_schema["definitions"]["robot_assembled"]).validate(ev.payload)

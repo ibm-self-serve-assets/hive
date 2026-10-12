@@ -18,13 +18,13 @@ def test_server_config_loading():
 
 def test_enrollment_config_loading():
     en_cfg = load_enrollment_config()
-    assert en_cfg.workshop_id == "hive-01"
+    assert en_cfg.workshop_id == "hive-1"
     assert len(en_cfg.enrollments) >= 1
     rec = en_cfg.find_by_attendee_id("queen-001")
     assert rec is not None
-    # Verify prefixes are derived, not stored
-    assert rec.topic_prefix == "hive-01.queen-001"
-    assert rec.consumer_group_prefix == "hive-01.queen-001"
+    # topic_prefix is workshop_id only; consumer_group_prefix includes attendee_id
+    assert rec.topic_prefix == "hive-1"
+    assert rec.consumer_group_prefix == "hive-1.queen-001"
 
 
 def test_obsolete_config_rejection():

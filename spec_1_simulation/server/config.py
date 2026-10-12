@@ -134,16 +134,15 @@ def load_enrollment_config() -> EnrollmentConfig:
 
     config = EnrollmentConfig(**data)
 
-    # Derive topic_prefix and consumer_group_prefix from workshop_id + attendee_id.
-    # Pattern: hive.<workshop_id>.<attendee_id>
-    # This keeps the enrollment JSON minimal — attendee_id is the only identifier needed.
+    # topic_prefix is the workshop_id only — all attendees share the same topics.
+    # consumer_group_prefix still includes attendee_id so each attendee gets
+    # an isolated consumer group offset.
     attendees = set()
     for rec in config.enrollments:
         if rec.attendee_id in attendees:
             raise ValueError(f"Duplicate attendee_id in enrollment config: {rec.attendee_id}")
         attendees.add(rec.attendee_id)
-        prefix = f"{config.workshop_id}.{rec.attendee_id}"
-        rec.topic_prefix = prefix
-        rec.consumer_group_prefix = prefix
+        rec.topic_prefix = config.workshop_id
+        rec.consumer_group_prefix = f"{config.workshop_id}.{rec.attendee_id}"
 
     return config

@@ -1,81 +1,77 @@
 {
-  "resources": ["resin", "silicon", "metals", "copper", "energy"],
   "parts": ["chassis", "electronics", "actuator", "battery"],
-  "delivery": {
-    "interval_sim_seconds": 20,
-    "resources": {
-      "resin": 4,
-      "silicon": 6,
-      "metals": 12,
-      "copper": 20,
-      "energy": 6
+  "resources": [
+    { "name": "energy",
+      "interval_sim_seconds": 10,
+      "quantity": 7
+    },
+    { "name": "resin",
+      "interval_sim_seconds": 10,
+      "quantity": 2
+    },
+    { "name": "silicon",
+      "interval_sim_seconds": 10,
+      "quantity": 3
+    },
+    { "name": "metals",
+      "interval_sim_seconds": 10,
+      "quantity": 2
+    },
+    { "name": "copper",
+      "interval_sim_seconds": 10,
+      "quantity": 5
     }
-  },
-  "stations": {
-    "structural_molding": {
-      "station_id": "structural_molding",
-      "display_name": "Structural molding",
-      "inputs": {
-        "resin": 1,
-        "metals": 1
-      },
+  ],
+  "manufacturing": [
+    { "name": "structural_molding",
       "output_id": "chassis",
-      "output_type": "part",
-      "duration_ms": 6000
-    },
-    "electronics_assembly": {
-      "station_id": "electronics_assembly",
-      "display_name": "Electronics assembly",
-      "inputs": {
-        "silicon": 1,
-        "copper": 1
-      },
-      "output_id": "electronics",
-      "output_type": "part",
-      "duration_ms": 4000
-    },
-    "actuator_fabrication": {
-      "station_id": "actuator_fabrication",
-      "display_name": "Actuator fabrication",
-      "inputs": {
-        "metals": 1,
-        "copper": 1
-      },
-      "output_id": "actuator",
-      "output_type": "part",
-      "duration_ms": 2000
-    },
-    "battery_assembly": {
-      "station_id": "battery_assembly",
-      "display_name": "Battery assembly",
+      "interval_sim_seconds": 10,
       "inputs": {
         "energy": 1,
-        "copper": 1,
+        "resin": 3,
         "metals": 1
-      },
-      "output_id": "battery",
-      "output_type": "part",
-      "duration_ms": 5000
+      }
     },
-    "worker_assembly": {
-      "station_id": "worker_assembly",
-      "display_name": "Worker assembly",
+    { "name": "Electronics assembly",
+      "output_id": "electronics",
+      "interval_sim_seconds": 10,
       "inputs": {
-        "chassis": 1,
-        "electronics": 3,
-        "battery": 2,
-        "actuator": 8
-      },
-      "output_id": "worker",
-      "output_type": "robot",
-      "duration_ms": 10000
+        "energy": 1,
+        "silicon": 3,
+        "copper": 2
+      }
+    },
+    { "name": "Actuator fabrication",
+      "output_id": "actuator",
+      "interval_sim_seconds": 10,
+      "inputs": {
+        "energy": 1,
+        "metals": 2,
+        "copper": 1
+      }
+    },
+    { "name": "Battery assembly",
+      "output_id": "battery",
+      "interval_sim_seconds": 10,
+      "inputs": {
+        "energy": 5,
+        "copper": 2,
+        "metals": 1
+      }
     }
-  },
-  "station_order": [
-    "structural_molding",
-    "electronics_assembly",
-    "actuator_fabrication",
-    "battery_assembly",
-    "worker_assembly"
-  ]
+  ],
+  "worker_assembly": {
+    "name": "Worker assembly",
+    "inputs": {
+      "chassis": 1,
+      "electronics": 3,
+      "battery": 2,
+      "actuator": 8
+    },
+    "robots" : [
+      { "name": "engineer",
+        "duration_ms": 10000
+      }
+    ]
+  }
 }

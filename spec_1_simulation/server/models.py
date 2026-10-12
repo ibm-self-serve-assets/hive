@@ -39,6 +39,9 @@ class FactoryInitializedPayload(BaseModel):
     attendee_id: str
     topic_prefix: str
     expires_at: str
+    # Static station input recipes — keyed by station_id.
+    # Published once so consumers know recipes without waiting for a job to start.
+    station_recipes: Dict[str, Dict[str, int]] = Field(default_factory=dict)
 
 
 class ConnectionTestPayload(BaseModel):
@@ -115,15 +118,23 @@ class CompletedWorkersState(BaseModel):
     last_robot_id: Optional[str] = None
 
 
+class ResourceDeliveryState(BaseModel):
+    """Per-resource delivery countdown, included in every factory snapshot."""
+    name: str
+    interval_sim_ms: int        # full cycle length in sim-ms
+    next_delivery_sim_time_ms: int  # absolute sim-ms when next delivery fires
+    next_delivery_in_ms: int    # remaining sim-ms at current speed (wall-relative)
+    quantity: int               # units delivered each cycle
+
+
 class FactoryStatePayload(BaseModel):
     lifecycle_status: str  # paused, running, stopped, expired
     running: bool
     operational_error: Optional[OperationalError] = None
     speed: int
-    next_delivery_sim_time_ms: int
-    next_delivery_in_ms: int
+    resource_deliveries: List[ResourceDeliveryState] = Field(default_factory=list)
     resources: Dict[str, int]
     parts: Dict[str, int]
     stations: List[StationState]
-    completed_workers: CompletedWorkersState
+    completed_robots: CompletedWorkersState
     last_applied_command_id: Optional[str] = None

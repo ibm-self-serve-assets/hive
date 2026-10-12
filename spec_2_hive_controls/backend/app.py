@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Local Hive Controls Backend...")
     csrf_token = secrets.token_hex(16)
 
-    # Initialize consumer manager (topics/group wired in after auto_reconnect resolves)
+    # Placeholder consumer — replaced by auto_reconnect once topics/group are known
     consumer_mgr = EventConsumerManager(
         store=store,
         sim_server_url=config.simulation_server_url,
@@ -52,9 +52,8 @@ async def lifespan(app: FastAPI):
     )
     consumer_mgr.start()
 
-    # Attempt auto-connection if token is already configured
-    if config.workshop_access_token:
-        asyncio.create_task(auto_reconnect())
+    # Always attempt auto-connect on startup — function self-guards if credentials missing
+    asyncio.create_task(auto_reconnect())
 
     yield
 
@@ -65,49 +64,119 @@ async def lifespan(app: FastAPI):
 
 async def auto_reconnect():
     """
-    Called on startup when a workshop token is already configured.
-    Fetches the current server epoch and any existing factory, then
-    restarts the consumer manager with the correct topics and group.
+    Called on startup when all credentials are configured.
+    1. Fetches server epoch.
+    2. If a factory already exists for this attendee, reconnects the consumer to it.
+    3. If no factory exists, provisions one and starts the consumer.
+
+    The UI is a 1:1 view of this backend — it never needs to trigger connection itself.
     """
     global consumer_mgr
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            headers = {"Authorization": f"Bearer {config.workshop_access_token}"}
-            r = await client.get(f"{config.simulation_server_url}/v1/server", headers=headers)
-            if r.status_code == 200:
-                epoch = r.json().get("server_epoch")
-                store.server_epoch = epoch
+    if not config.workshop_access_token:
+        logger.warning("AUTO-CONNECT: WORKSHOP_ACCESS_TOKEN not set in .env — skipping")
+        return
+    if not config.confluent_bootstrap_server:
+        logger.warning("AUTO-CONNECT: CONFLUENT_BOOTSTRAP_SERVER not set in .env — skipping")
+        return
+    if not config.confluent_api_key or not config.confluent_api_secret:
+        logger.warning("AUTO-CONNECT: CONFLUENT_API_KEY/SECRET not set in .env — skipping")
+        return
 
+    headers = {"Authorization": f"Bearer {config.workshop_access_token}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1. Get server epoch
+            try:
+                r = await client.get(f"{config.simulation_server_url}/v1/server", headers=headers)
+                r.raise_for_status()
+            except Exception as e:
+                logger.error(f"AUTO-CONNECT: Cannot reach sim server at {config.simulation_server_url}: {e}")
+                return
+            epoch = r.json().get("server_epoch")
+            store.server_epoch = epoch
+            logger.info(f"AUTO-CONNECT: Sim server epoch {epoch[:8]}…")
+
+            # 2. Check for existing factory
             f_resp = await client.get(f"{config.simulation_server_url}/v1/factories", headers=headers)
+            topics_map: Dict[str, str] = {}
+            group_prefix: str = ""
+
             if f_resp.status_code == 200:
                 facts = f_resp.json().get("factories", [])
                 if facts:
-                    f = facts[0]
-                    fid = f["factory_id"]
-                    store.active_factory_id = fid
-                    store.server_epoch = f["server_epoch"]
-                    logger.info(f"Reconnected to existing factory {fid}")
+                    f0 = facts[0]
+                    store.active_factory_id = f0["factory_id"]
+                    store.server_epoch = f0["server_epoch"]
+                    topics_map = f0.get("topics", {})
+                    group_prefix = f0.get("consumer_group_prefix", "")
+                    logger.info(f"AUTO-CONNECT: Reconnected to existing factory {f0['factory_id'][:8]}…")
 
-                    # Restart consumer with correct topics and consumer group
-                    topic_list = list(f.get("topics", {}).values())
-                    group_prefix = f.get("consumer_group_prefix", "")
-                    if topic_list and group_prefix and config.confluent_bootstrap_server:
-                        consumer_mgr.stop()
-                        consumer_mgr = EventConsumerManager(
-                            store=store,
-                            sim_server_url=config.simulation_server_url,
-                            token=config.workshop_access_token,
-                            bootstrap_servers=config.confluent_bootstrap_server,
-                            api_key=config.confluent_api_key,
-                            api_secret=config.confluent_api_secret,
-                            topics=topic_list,
-                            consumer_group=group_prefix,
-                            on_event_callback=notify_subscribers,
-                        )
-                        consumer_mgr.start()
-                        logger.info(f"Consumer restarted with {len(topic_list)} Confluent topics")
+            # 3. No factory — provision one
+            if not store.active_factory_id:
+                logger.info("AUTO-CONNECT: No existing factory — provisioning…")
+                prov_body = {
+                    "bootstrap_server": config.confluent_bootstrap_server,
+                    "producer_credentials": {
+                        "api_key": config.confluent_api_key,
+                        "api_secret": config.confluent_api_secret,
+                    },
+                }
+                try:
+                    prov_r = await client.post(
+                        f"{config.simulation_server_url}/v1/factories",
+                        json=prov_body,
+                        headers={
+                            **headers,
+                            "Idempotency-Key": str(uuid.uuid4()),
+                            "X-Server-Epoch": epoch,
+                        },
+                    )
+                    prov_r.raise_for_status()
+                except Exception as e:
+                    logger.error(f"AUTO-CONNECT: Factory provisioning failed: {e}")
+                    return
+
+                prov_data = prov_r.json()
+                factory_id = prov_data["factory_id"]
+                store.active_factory_id = factory_id
+                logger.info(f"AUTO-CONNECT: Factory provisioned {factory_id[:8]}…")
+
+                # Fetch detail for topics + group
+                try:
+                    fdetail_r = await client.get(
+                        f"{config.simulation_server_url}/v1/factories/{factory_id}",
+                        headers=headers,
+                    )
+                    if fdetail_r.status_code == 200:
+                        fdetail = fdetail_r.json()
+                        topics_map = fdetail.get("topics", {})
+                        group_prefix = fdetail.get("consumer_group_prefix", "")
+                except Exception as e:
+                    logger.warning(f"AUTO-CONNECT: Could not fetch factory detail: {e}")
+
+            # 4. Start consumer
+            if topics_map and group_prefix:
+                topic_list = list(topics_map.values())
+                consumer_mgr.stop()
+                consumer_mgr = EventConsumerManager(
+                    store=store,
+                    sim_server_url=config.simulation_server_url,
+                    token=config.workshop_access_token,
+                    bootstrap_servers=config.confluent_bootstrap_server,
+                    api_key=config.confluent_api_key,
+                    api_secret=config.confluent_api_secret,
+                    topics=topic_list,
+                    consumer_group=group_prefix,
+                    on_event_callback=notify_subscribers,
+                )
+                consumer_mgr.start()
+                logger.info(f"AUTO-CONNECT: Consumer started on {len(topic_list)} topics")
+            else:
+                logger.warning("AUTO-CONNECT: No topics available — consumer not started")
+
     except Exception as e:
-        logger.debug(f"Auto-reconnect skipped or failed: {e}")
+        logger.error(f"AUTO-CONNECT: Unexpected error: {e}")
 
 
 app = FastAPI(
@@ -140,11 +209,6 @@ def verify_csrf(x_csrf_token: Optional[str] = Header(None)):
 
 
 # Request schemas
-class ConnectRequest(BaseModel):
-    simulation_server_url: str
-    workshop_access_token: Optional[str] = None
-
-
 class ControlCommandRequest(BaseModel):
     command: str  # start, pause, stop, restart, speed
     start: Optional[bool] = True
@@ -197,167 +261,15 @@ async def get_events():
 
 
 @app.post("/api/connect")
-async def connect_and_provision(
-    req: ConnectRequest,
-    x_csrf_token: Optional[str] = Header(None),
-):
+async def retry_connect(x_csrf_token: Optional[str] = Header(None)):
+    """
+    Manual retry trigger — re-runs the same auto_reconnect logic that fires on startup.
+    The UI calls this if it detects the backend is not yet connected (e.g. sim server
+    was not up when the backend started). All credentials come from .env.
+    """
     verify_csrf(x_csrf_token)
-    global config, consumer_mgr
-
-    # Simulation server URL may be overridden from the request (e.g. switching from local
-    # to a hosted server). Workshop token and all Confluent credentials come from .env.
-    config.simulation_server_url = req.simulation_server_url.rstrip("/") or config.simulation_server_url
-    # Token from request takes precedence only if non-empty; otherwise use .env value
-    if req.workshop_access_token:
-        config.workshop_access_token = req.workshop_access_token
-
-    if not config.confluent_bootstrap_server:
-        raise HTTPException(
-            status_code=400,
-            detail={"error_code": "missing_confluent_config", "message": "CONFLUENT_BOOTSTRAP_SERVER is not set in .env"},
-        )
-    if not config.confluent_api_key or not config.confluent_api_secret:
-        raise HTTPException(
-            status_code=400,
-            detail={"error_code": "missing_confluent_config", "message": "CONFLUENT_API_KEY / SECRET are not set in .env"},
-        )
-
-    token = config.workshop_access_token or ""
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-    
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            # 1. Check server epoch
-            srv_r = await client.get(f"{config.simulation_server_url}/v1/server", headers=headers)
-        except Exception as e:
-            raise HTTPException(
-                status_code=502,
-                detail={"error_code": "simulation_server_unreachable", "message": f"Cannot connect to simulation server at {config.simulation_server_url}: {e}"}
-            )
-
-        if srv_r.status_code != 200:
-            try:
-                err_body = srv_r.json()
-            except Exception:
-                err_body = {"message": srv_r.text or f"Server returned HTTP {srv_r.status_code}"}
-            raise HTTPException(status_code=srv_r.status_code, detail=err_body)
-            
-        epoch = srv_r.json().get("server_epoch")
-        store.server_epoch = epoch
-
-        # 2. Check if owner already has a factory
-        try:
-            f_list_r = await client.get(f"{config.simulation_server_url}/v1/factories", headers=headers)
-            if f_list_r.status_code == 200:
-                factories = f_list_r.json().get("factories", [])
-                if factories:
-                    f0 = factories[0]
-                    store.active_factory_id = f0["factory_id"]
-                    store.server_epoch = f0["server_epoch"]
-
-                    # Restart consumer with topics and group from existing factory
-                    topic_list = list(f0.get("topics", {}).values())
-                    group_prefix = f0.get("consumer_group_prefix", "")
-                    if topic_list and group_prefix and config.confluent_bootstrap_server:
-                        if consumer_mgr:
-                            consumer_mgr.stop()
-                        new_mgr = EventConsumerManager(
-                            store=store,
-                            sim_server_url=config.simulation_server_url,
-                            token=config.workshop_access_token,
-                            bootstrap_servers=config.confluent_bootstrap_server,
-                            api_key=config.confluent_api_key,
-                            api_secret=config.confluent_api_secret,
-                            topics=topic_list,
-                            consumer_group=group_prefix,
-                            on_event_callback=notify_subscribers,
-                        )
-                        new_mgr.start()
-                        consumer_mgr = new_mgr
-
-                    return {
-                        "status": "reconnected",
-                        "factory_id": f0["factory_id"],
-                        "server_epoch": f0["server_epoch"],
-                        "topics": f0.get("topics", {}),
-                    }
-        except Exception as e:
-            logger.debug(f"Factory list lookup error: {e}")
-
-        # 3. Provision new factory
-        prov_body = {
-            "bootstrap_server": config.confluent_bootstrap_server,
-            "producer_credentials": {
-                "api_key": config.confluent_api_key,
-                "api_secret": config.confluent_api_secret,
-            },
-        }
-        try:
-            prov_r = await client.post(
-                f"{config.simulation_server_url}/v1/factories",
-                json=prov_body,
-                headers={
-                    **headers,
-                    "Idempotency-Key": str(uuid.uuid4()),
-                    "X-Server-Epoch": epoch,
-                },
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=502,
-                detail={"error_code": "provision_failed", "message": f"Failed calling /v1/factories: {e}"}
-            )
-
-        if prov_r.status_code not in (200, 202):
-            try:
-                err_body = prov_r.json()
-            except Exception:
-                err_body = {"message": prov_r.text or f"Server returned HTTP {prov_r.status_code}"}
-            raise HTTPException(status_code=prov_r.status_code, detail=err_body)
-
-        prov_data = prov_r.json()
-        factory_id = prov_data["factory_id"]
-        store.active_factory_id = factory_id
-
-        # Fetch the factory detail to get authoritative topics and consumer_group_prefix
-        topics_map: Dict[str, str] = {}
-        group_prefix: str = ""
-        try:
-            fdetail_r = await client.get(
-                f"{config.simulation_server_url}/v1/factories/{factory_id}",
-                headers=headers,
-            )
-            if fdetail_r.status_code == 200:
-                fdetail = fdetail_r.json()
-                topics_map = fdetail.get("topics", {})
-                group_prefix = fdetail.get("consumer_group_prefix", "")
-        except Exception as e:
-            logger.debug(f"Could not fetch factory detail for topics: {e}")
-
-        # Restart consumer manager with topics and group
-        if consumer_mgr:
-            consumer_mgr.stop()
-        topic_list = list(topics_map.values()) if topics_map else []
-        consumer_mgr = EventConsumerManager(
-            store=store,
-            sim_server_url=config.simulation_server_url,
-            token=config.workshop_access_token,
-            bootstrap_servers=config.confluent_bootstrap_server,
-            api_key=config.confluent_api_key,
-            api_secret=config.confluent_api_secret,
-            topics=topic_list if (topic_list and group_prefix) else [],
-            consumer_group=group_prefix or None,
-            on_event_callback=notify_subscribers,
-        )
-        consumer_mgr.start()
-
-        return {
-            "status": "provisioned",
-            "factory_id": factory_id,
-            "operation_id": prov_data.get("operation_id"),
-            "server_epoch": epoch,
-            "topics": topics_map,
-        }
+    asyncio.create_task(auto_reconnect())
+    return {"status": "connecting"}
 
 
 @app.post("/api/controls")

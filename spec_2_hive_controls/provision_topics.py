@@ -8,23 +8,25 @@ The simulation server publishes events to these topics as your factory runs.
 Topics must exist before you call /v1/factories — the server verifies them
 at registration time and will reject your request if any are missing.
 
-WHY 6 TOPICS?
-  Each event type goes to its own topic so consumers can subscribe selectively.
-  Five topics carry the live activity stream (retained 24 h, then deleted).
-  One topic carries factory state snapshots (compacted — only latest per key,
-  kept forever) so you can always replay from the beginning to rebuild state.
+WHY 8 TOPICS?
+Each event type goes to its own topic so consumers can subscribe selectively.
+Seven topics carry the live activity stream (retained 24 h, then deleted).
+One topic carries factory state snapshots (compacted — only latest per key,
+kept forever) so you can always replay from the beginning to rebuild state.
 
-  Topic names follow the pattern:  <workshop_id>.<attendee_id>.<event-type>
+Topic names follow the pattern:  <workshop_id>.<event-type>
 
-  Activity topics (delete policy, 24 h retention):
-    *.resource-delivered   — a raw materials shipment arrived at your factory
-    *.job-started          — a parts-fabrication station began a new job
-    *.assembly-started     — the robot assembly station started building a bee
-    *.part-produced        — a fabrication job completed and a part was stored
-    *.robot-assembled      — a complete bee robot rolled off the assembly line
+Activity topics (delete policy, 24 h retention):
+*.resource-delivered        — a raw materials shipment arrived at your factory
+*.manufacturing-started     — a parts-fabrication station began a job
+*.manufacturing-completed   — a fabrication job completed and a part was stored
+*.manufacturing-blocked     — a parts station is blocked waiting for resources
+*.assembly-started          — the robot assembly station started building a bee
+*.assembly-completed        — a complete bee robot rolled off the assembly line
+*.assembly-blocked          — robot assembly is blocked waiting for parts
 
-  State topic (compact policy, infinite retention):
-    *.factory-state        — full factory snapshot (lifecycle, inventory, stations)
+State topic (compact policy, infinite retention):
+*.factory-state             — full factory snapshot (lifecycle, inventory, stations)
 
 WHY COMPACT FOR FACTORY-STATE?
   Log compaction keeps only the most recent message per key. This means your
@@ -37,8 +39,7 @@ unchanged and reported as "~ Exists" rather than causing an error.
 USAGE:
   # 1. Fill in your .env (same directory as this script):
   #
-  #    ATTENDEE_ID=queen-042          ← given to you by the organizer
-  #    WORKSHOP_ID=hive-01      ← given to you by the organizer
+  #    WORKSHOP_ID=hive-1      ← given to you by the organizer
   #
   #    CONFLUENT_REST_ENDPOINT=https://pkc-xxxxx.us-west-2.aws.confluent.cloud
   #      → Confluent Cloud → Cluster → Cluster Settings → Endpoints → REST endpoint
@@ -95,12 +96,14 @@ STATE_CONFIG = {
 
 # Each tuple is (topic suffix, config). Suffixes are appended to the topic prefix.
 TOPIC_SUFFIXES = [
-    (".resource-delivered", ACTIVITY_CONFIG),
-    (".job-started",        ACTIVITY_CONFIG),
-    (".assembly-started",   ACTIVITY_CONFIG),
-    (".part-produced",      ACTIVITY_CONFIG),
-    (".robot-assembled",    ACTIVITY_CONFIG),
-    (".factory-state",      STATE_CONFIG),
+    (".resource-delivered",       ACTIVITY_CONFIG),
+    (".manufacturing-started",    ACTIVITY_CONFIG),
+    (".manufacturing-completed",  ACTIVITY_CONFIG),
+    (".manufacturing-blocked",    ACTIVITY_CONFIG),
+    (".assembly-started",         ACTIVITY_CONFIG),
+    (".assembly-completed",       ACTIVITY_CONFIG),
+    (".assembly-blocked",         ACTIVITY_CONFIG),
+    (".factory-state",            STATE_CONFIG),
 ]
 
 
@@ -175,7 +178,7 @@ def create_topic(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create your 6 Confluent Cloud topics for the Hive workshop.",
+        description="Create your 8 Confluent Cloud topics for the Hive workshop.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -194,7 +197,6 @@ def main():
         val = os.environ.get(key, "").strip().strip("'\"")
         return "" if val == "CHANGE_ME" else val
 
-    attendee_id   = get("ATTENDEE_ID")
     workshop_id   = get("WORKSHOP_ID")
     rest_endpoint = get("CONFLUENT_REST_ENDPOINT").rstrip("/")
     cluster_id    = get("CONFLUENT_CLUSTER_ID")
@@ -202,10 +204,9 @@ def main():
     api_secret    = get("CONFLUENT_API_SECRET")
 
     # Validate all required values before doing any work.
-    # In dry-run mode we skip cluster credentials but still need attendee/workshop IDs.
+    # In dry-run mode we skip cluster credentials but still need the workshop ID.
     required = [
-        ("ATTENDEE_ID",   attendee_id),
-        ("WORKSHOP_ID",   workshop_id),
+        ("WORKSHOP_ID", workshop_id),
     ]
     if not args.dry_run:
         required += [
@@ -225,12 +226,11 @@ def main():
             print("Use --dry-run to preview topic names without credentials.")
         sys.exit(1)
 
-    # Derive the topic prefix from workshop + attendee IDs.
-    # Example: hive-01.queen-042
-    prefix = f"{workshop_id}.{attendee_id}"
+    # Topic prefix is just the workshop ID.
+    # Example: hive-1
+    prefix = workshop_id
 
     # Print a summary header before doing any work.
-    print(f"Attendee : {attendee_id}")
     print(f"Workshop : {workshop_id}")
     print(f"Prefix   : {prefix}")
     print(f"Topics   : {len(TOPIC_SUFFIXES)}")

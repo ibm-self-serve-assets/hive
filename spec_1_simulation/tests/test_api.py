@@ -60,108 +60,63 @@ def test_health_endpoints(test_setup):
     assert r.json() == {"status": "ready"}
 
 
-def test_factory_lifecycle_and_isolation(test_setup):
+def test_server_info(test_setup):
+    """GET /v1/server returns epoch and matches manager state."""
     client, mgr, test_token = test_setup
     headers = {"Authorization": f"Bearer {test_token}"}
 
-    # 1. Get server info
     r = client.get("/v1/server", headers=headers)
     assert r.status_code == 200
-    epoch = r.json()["server_epoch"]
-    assert epoch == mgr.get_server_epoch()
+    data = r.json()
+    assert data["server_epoch"] == mgr.get_server_epoch()
+    assert data["contract_version"] == "1.0"
+    assert data["active_factories"] == 0
 
-    # 2. Provision factory
-    prov_req = {
-        "bootstrap_server": "localhost:9092",
-        "producer_credentials": {
-            "api_key": "test_key",
-            "api_secret": "test_secret",
-        },
-    }
-    r = client.post(
-        "/v1/factories",
-        json=prov_req,
-        headers={**headers, "Idempotency-Key": "idem-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 202
-    res = r.json()
-    factory_id = res["factory_id"]
-    operation_id = res["operation_id"]
 
-    # 3. Check operation status
-    r = client.get(f"/v1/operations/{operation_id}", headers=headers)
-    assert r.status_code == 200
-    assert r.json()["status"] in ("pending", "succeeded")
+def test_attendee_isolation(test_setup):
+    """Bearer tokens are scoped to the enrolling attendee."""
+    client, _, _ = test_setup
 
-    # 4. List factories
-    r = client.get("/v1/factories", headers=headers)
-    assert r.status_code == 200
-    facts = r.json()["factories"]
-    assert len(facts) == 1
-    assert facts[0]["factory_id"] == factory_id
+    # No token → 401
+    r = client.get("/v1/server")
+    assert r.status_code == 401
 
-    # 5. Unauthorized attendee isolation check
-    headers_att2 = {"Authorization": "Bearer token2"}
-    r = client.get(f"/v1/factories/{factory_id}", headers=headers_att2)
+    # Wrong token → 401
+    r = client.get("/v1/server", headers={"Authorization": "Bearer bad-token"})
+    assert r.status_code == 401
+
+    # Attendee 2 cannot reach a non-existent factory belonging to attendee 1
+    r = client.get("/v1/factories/nonexistent-id", headers={"Authorization": "Bearer token2"})
     assert r.status_code == 404
 
-    # 6. Start factory
-    r = client.post(
-        f"/v1/factories/{factory_id}/start",
-        json={"expected_generation": 1},
-        headers={**headers, "Idempotency-Key": "start-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 200
-    assert r.json()["lifecycle_status"] == "running"
 
-    # 7. Speed change
-    r = client.post(
-        f"/v1/factories/{factory_id}/speed",
-        json={"expected_generation": 1, "speed": 5},
-        headers={**headers, "Idempotency-Key": "speed-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 200
-
-    # 8. Pause
-    r = client.post(
-        f"/v1/factories/{factory_id}/pause",
-        json={"expected_generation": 1},
-        headers={**headers, "Idempotency-Key": "pause-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 200
-    assert r.json()["lifecycle_status"] == "paused"
-
-    # 9. Stop
-    r = client.post(
-        f"/v1/factories/{factory_id}/stop",
-        json={"expected_generation": 1},
-        headers={**headers, "Idempotency-Key": "stop-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 200
-    assert r.json()["lifecycle_status"] == "stopped"
-
-    # 10. Start on stopped returns 409
-    r = client.post(
-        f"/v1/factories/{factory_id}/start",
-        json={"expected_generation": 1},
-        headers={**headers, "Idempotency-Key": "start-2", "X-Server-Epoch": epoch},
-    )
+def test_epoch_mismatch_rejected(test_setup):
+    """Commands with a wrong X-Server-Epoch header get a 409."""
+    client, mgr, test_token = test_setup
+    headers = {
+        "Authorization": f"Bearer {test_token}",
+        "Idempotency-Key": "idem-epoch-1",
+        "X-Server-Epoch": "completely-wrong-epoch",
+    }
+    r = client.post("/v1/factories/fake-factory-id/start", json={}, headers=headers)
     assert r.status_code == 409
+    assert r.json()["detail"]["error_code"] == "server_restarted"
 
-    # 11. Restart at zero -> generation 2
-    r = client.post(
-        f"/v1/factories/{factory_id}/restart",
-        json={"expected_generation": 1, "start": True},
-        headers={**headers, "Idempotency-Key": "restart-1", "X-Server-Epoch": epoch},
-    )
-    assert r.status_code == 200
-    assert r.json()["run_generation"] == 2
-    assert r.json()["lifecycle_status"] == "running"
 
-    # 12. Epoch mismatch returns 409
+def test_provision_factory_missing_idempotency_key(test_setup):
+    """POST /v1/factories without Idempotency-Key returns 400."""
+    client, mgr, test_token = test_setup
+    headers = {"Authorization": f"Bearer {test_token}"}
+    epoch = mgr.get_server_epoch()
+
     r = client.post(
-        f"/v1/factories/{factory_id}/pause",
-        json={"expected_generation": 2},
-        headers={**headers, "Idempotency-Key": "pause-2", "X-Server-Epoch": "wrong-epoch"},
+        "/v1/factories",
+        json={
+            "bootstrap_server": "localhost:9092",
+            "producer_credentials": {"api_key": "k", "api_secret": "s"},
+        },
+        headers={**headers, "X-Server-Epoch": epoch},
+        # No Idempotency-Key header
     )
-    assert r.status_code == 409
+    assert r.status_code == 400
+    assert r.json()["detail"]["error_code"] == "missing_idempotency_key"

@@ -8,7 +8,7 @@
   "properties": {
     "workshop_id": {
       "type": "string",
-      "description": "Workshop identifier, e.g. hive-01. Used to derive topic and consumer group prefixes."
+      "description": "Workshop identifier, e.g. hive-1. Used to derive topic and consumer group prefixes."
     },
     "enrollments": {
       "type": "array",

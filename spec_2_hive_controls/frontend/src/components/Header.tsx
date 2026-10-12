@@ -3,10 +3,9 @@ import React from 'react';
 interface HeaderProps {
   streamHealth: 'live' | 'stale' | 'awaiting_events';
   factoryId: string | null;
-  onOpenConnect: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ streamHealth, factoryId: _factoryId, onOpenConnect }) => {
+export const Header: React.FC<HeaderProps> = ({ streamHealth, factoryId: _factoryId }) => {
   const isLive = streamHealth === 'live';
 
   return (
@@ -30,11 +29,10 @@ export const Header: React.FC<HeaderProps> = ({ streamHealth, factoryId: _factor
         </nav>
       </div>
 
-      {/* Right: factory pill + stream dot */}
+      {/* Right: stream status pill */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={onOpenConnect}
-          className="flex items-center gap-2.5 bg-[#2850B8] hover:bg-[#3460C8] text-white text-xs font-semibold px-4 py-1.5 rounded-full transition"
+        <div
+          className="flex items-center gap-2.5 bg-[#2850B8] text-white text-xs font-semibold px-4 py-1.5 rounded-full"
         >
           <div className="flex items-center gap-1.5">
             {isLive ? (
@@ -43,11 +41,10 @@ export const Header: React.FC<HeaderProps> = ({ streamHealth, factoryId: _factor
               <span className={`w-2 h-2 rounded-full ${streamHealth === 'stale' ? 'bg-amber-400' : 'bg-[#4A5A8A]'}`} />
             )}
             <span className="text-[11px] text-[#00000]">
-              {isLive ? 'connected' : streamHealth === 'stale' ? 'stale' : 'awaiting'}
+              {isLive ? 'connected' : streamHealth === 'stale' ? 'stale' : 'connecting'}
             </span>
           </div>
-
-        </button>
+        </div>
       </div>
     </header>
   );

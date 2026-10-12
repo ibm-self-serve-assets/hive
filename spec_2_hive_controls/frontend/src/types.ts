@@ -15,20 +15,21 @@ export interface StationState {
   job: StationJob | null;
 }
 
+export interface ResourceDeliveryState {
+  name: string;
+  interval_sim_ms: number;
+  next_delivery_sim_time_ms: number;
+  next_delivery_in_ms: number;
+  quantity: number;
+}
+
 export interface FactorySnapshot {
   lifecycle_status: 'paused' | 'running' | 'stopped' | 'expired';
   running: boolean;
   operational_error: { code: string; message: string } | null;
   speed: number;
-  next_delivery_sim_time_ms: number;
-  next_delivery_in_ms: number;
-  resources: {
-    resin: number;
-    silicon: number;
-    metals: number;
-    copper: number;
-    energy: number;
-  };
+  resource_deliveries: ResourceDeliveryState[];
+  resources: Record<string, number>;
   parts: {
     chassis: number;
     electronics: number;
@@ -36,7 +37,7 @@ export interface FactorySnapshot {
     battery: number;
   };
   stations: StationState[];
-  completed_workers: {
+  completed_robots: {
     count: number;
     last_robot_id: string | null;
   };
@@ -64,6 +65,7 @@ export interface ObservedState {
   snapshot_occurred_at: string | null;
   snapshot: FactorySnapshot | null;
   sim_time_ms: number;
+  station_recipes: Record<string, Record<string, number>>;
   latest_command_receipt: {
     command: string;
     command_id: string;

@@ -80,7 +80,7 @@ def test_conservation_of_materials():
     # Chassis in inventory + active chassis job + chassis in worker assembly + chassis in completed workers
     active_chassis_job = 1 if "structural_molding" in sim.active_jobs else 0
     active_worker_job = 1 if "worker_assembly" in sim.active_jobs else 0
-    total_chassis = sim.parts["chassis"] + active_worker_job * 1 + sim.completed_workers_count * 1
+    total_chassis = sim.parts["chassis"] + active_worker_job * 1 + sim.completed_robots_count * 1
     
     total_resin_accounted = sim.resources["resin"] + active_chassis_job * 1 + total_chassis * 1
     assert total_resin_accounted == total_delivered_resin

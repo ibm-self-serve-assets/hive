@@ -29,7 +29,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isRunning = snapshot?.running ?? false;
   const lifecycleStatus = snapshot?.lifecycle_status ?? 'paused';
-  const speed = snapshot?.speed ?? 1;
 
   const isStopped = lifecycleStatus === 'stopped';
   const isExpired = lifecycleStatus === 'expired';
@@ -93,27 +92,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>Pause</span>
               </button>
             )}
-          </div>
-        </section>
-
-        {/* ── Simulation speed ── */}
-        <section>
-          <h2 className="text-xs font-bold text-white mb-2">Simulation speed</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {[1, 5].map((s) => (
-              <button
-                key={s}
-                onClick={() => onSendCommand('speed', { speed: s })}
-                disabled={isCommandPending || isProvisioning}
-                className={`py-1.5 rounded text-sm font-bold transition disabled:opacity-40 ${
-                  speed === s
-                    ? 'bg-[#2850B8] text-white'
-                    : 'bg-[#0C1A52] text-[#8AA0D0] border border-[#1A2760] hover:bg-[#142060]'
-                }`}
-              >
-                {s}x
-              </button>
-            ))}
           </div>
         </section>
 

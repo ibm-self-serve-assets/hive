@@ -14,6 +14,7 @@ from server.models import (
     FactoryInitializedPayload,
     OperationalError,
 )
+from server.rules import get_simulation_rules
 from server.simulation import SimulationRun
 from server.buffer import FactoryEventBuffer, QueuedEvent
 from server.producer import FactoryKafkaProducer
@@ -100,12 +101,14 @@ class FactoryInstance:
     def get_topics(self) -> Dict[str, str]:
         p = self.enrollment_record.topic_prefix
         return {
-            "resource_delivered": f"{p}.resource-delivered",
-            "job_started": f"{p}.job-started",
-            "assembly_started": f"{p}.assembly-started",
-            "part_produced": f"{p}.part-produced",
-            "robot_assembled": f"{p}.robot-assembled",
-            "factory_state": f"{p}.factory-state",
+            "resource_delivered":        f"{p}.resource-delivered",
+            "manufacturing_started":     f"{p}.manufacturing-started",
+            "manufacturing_completed":   f"{p}.manufacturing-completed",
+            "manufacturing_blocked":     f"{p}.manufacturing-blocked",
+            "assembly_started":          f"{p}.assembly-started",
+            "assembly_completed":        f"{p}.assembly-completed",
+            "assembly_blocked":          f"{p}.assembly-blocked",
+            "factory_state":             f"{p}.factory-state",
         }
 
 
@@ -302,11 +305,15 @@ class FactoryManager:
                 # Publish factory.initialized — marks the moment this factory
                 # became ready. Published to .factory-state (compact topic) so
                 # consumers replaying from earliest always see it.
+                rules = get_simulation_rules()
+                station_recipes = {m.station_id: dict(m.inputs) for m in rules.manufacturing}
+                station_recipes[rules.worker_assembly.station_id] = dict(rules.worker_assembly.inputs)
                 init_payload = FactoryInitializedPayload(
                     operation_id=operation_id,
                     attendee_id=factory.owner_attendee_id,
                     topic_prefix=factory.enrollment_record.topic_prefix,
                     expires_at=factory.expires_at.isoformat(),
+                    station_recipes=station_recipes,
                 )
                 init_event = EventEnvelope(
                     event_id=str(uuid.uuid4()),

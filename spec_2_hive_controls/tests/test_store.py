@@ -72,7 +72,7 @@ def test_in_memory_projection_store():
             "resources": {"resin": 3, "silicon": 5, "metals": 9, "copper": 17, "energy": 5},
             "parts": {"chassis": 0, "electronics": 0, "actuator": 0, "battery": 0},
             "stations": [],
-            "completed_workers": {"count": 0, "last_robot_id": None},
+            "completed_robots": {"count": 0, "last_robot_id": None},
             "last_applied_command_id": None,
         },
     )

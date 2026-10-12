@@ -1,29 +1,81 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 
-class StationRecipe(BaseModel):
-    station_id: str
-    display_name: str
+class ResourceConfig(BaseModel):
+    name: str
+    interval_sim_seconds: int
+    quantity: int
+
+
+class ManufacturingConfig(BaseModel):
+    name: str                    # e.g. "structural_molding" — used as station_id
+    output_id: str               # e.g. "chassis"
+    interval_sim_seconds: int    # duration of one production cycle in sim-seconds
     inputs: Dict[str, int]
-    output_id: str
-    output_type: str  # "part" or "robot"
+
+    @property
+    def station_id(self) -> str:
+        return self.name.lower().replace(" ", "_")
+
+    @property
+    def display_name(self) -> str:
+        return self.name.replace("_", " ").title()
+
+    @property
+    def duration_ms(self) -> int:
+        return self.interval_sim_seconds * 1000
+
+    @property
+    def output_type(self) -> str:
+        return "part"
+
+
+class RobotConfig(BaseModel):
+    name: str
     duration_ms: int
 
 
-class DeliveryConfig(BaseModel):
-    interval_sim_seconds: int = 20
-    resources: Dict[str, int]
+class WorkerAssemblyConfig(BaseModel):
+    name: str
+    inputs: Dict[str, int]
+    robots: List[RobotConfig]
+
+    @property
+    def station_id(self) -> str:
+        return "worker_assembly"
+
+    @property
+    def output_type(self) -> str:
+        return "robot"
 
 
 class SimulationRules(BaseModel):
-    resources: List[str]
+    resources: List[ResourceConfig]
     parts: List[str]
-    delivery: DeliveryConfig
-    stations: Dict[str, StationRecipe]
-    station_order: List[str]
+    manufacturing: List[ManufacturingConfig]
+    worker_assembly: WorkerAssemblyConfig
+
+    @property
+    def resource_names(self) -> List[str]:
+        return [r.name for r in self.resources]
+
+    @property
+    def resource_map(self) -> Dict[str, ResourceConfig]:
+        return {r.name: r for r in self.resources}
+
+    @property
+    def station_order(self) -> List[str]:
+        """Manufacturing station IDs in definition order, followed by worker_assembly."""
+        return [m.station_id for m in self.manufacturing] + [self.worker_assembly.station_id]
+
+    def get_manufacturing(self, station_id: str) -> Optional[ManufacturingConfig]:
+        for m in self.manufacturing:
+            if m.station_id == station_id:
+                return m
+        return None
 
 
 _cached_rules: Optional[SimulationRules] = None

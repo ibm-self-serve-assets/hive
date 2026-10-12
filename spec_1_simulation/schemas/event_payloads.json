@@ -105,7 +105,7 @@
         "resources",
         "parts",
         "stations",
-        "completed_workers",
+        "completed_robots",
         "last_applied_command_id"
       ],
       "properties": {
@@ -206,7 +206,7 @@
             "additionalProperties": false
           }
         },
-        "completed_workers": {
+        "completed_robots": {
           "type": "object",
           "required": ["count", "last_robot_id"],
           "properties": {

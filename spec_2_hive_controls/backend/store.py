@@ -6,7 +6,7 @@ from backend.models import FactoryStatePayload, ActivityEvent, EventEnvelope
 
 
 class InMemProjectionStore:
-    def __init__(self, max_activity_events: int = 200):
+    def __init__(self, max_activity_events: int = 1000):
         self.max_activity_events = max_activity_events
         self.active_factory_id: Optional[str] = None
         self.server_epoch: Optional[str] = None
@@ -30,6 +30,10 @@ class InMemProjectionStore:
         # Command receipts
         self.latest_command_receipt: Optional[Dict[str, Any]] = None
 
+        # Station input recipes — populated once from factory.initialized payload.
+        # Keyed by station_id; value is resource/part → quantity dict.
+        self.station_recipes: Dict[str, Dict[str, int]] = {}
+
     def reset_view(self, factory_id: Optional[str], server_epoch: Optional[str]):
         self.active_factory_id = factory_id
         self.server_epoch = server_epoch
@@ -42,6 +46,7 @@ class InMemProjectionStore:
         self.activity_events.clear()
         self._seen_ids.clear()
         self.latest_command_receipt = None
+        self.station_recipes = {}
 
     def ingest_envelope(self, env: EventEnvelope) -> bool:
         """
@@ -66,6 +71,13 @@ class InMemProjectionStore:
         self._seen_ids[env.event_id] = None
         if len(self._seen_ids) > self._seen_ids_max:
             self._seen_ids.popitem(last=False)  # evict oldest
+
+        # Absorb station recipes from factory.initialized — fires once, never again
+        if env.event_type == "factory.initialized":
+            recipes = env.payload.get("station_recipes", {})
+            if recipes:
+                self.station_recipes = recipes
+            return True
 
         # Handle factory.state snapshot
         if env.event_type == "factory.state":
@@ -109,23 +121,27 @@ class InMemProjectionStore:
             res = payload.get("resources", {})
             parts = [f"{k}: +{v}" for k, v in res.items() if v > 0]
             return f"Resources delivered ({', '.join(parts)})"
-        elif event_type == "job.started":
+        elif event_type == "manufacturing.started":
             st = payload.get("station_id", "")
             out = payload.get("output_id", "")
             dur = payload.get("duration_ms", 0) // 1000
-            return f"Job started at {st} -> {out} ({dur}s)"
-        elif event_type == "part.produced":
+            return f"{st.replace('_', ' ').title()} → {out} ({dur}s)"
+        elif event_type == "manufacturing.completed":
             st = payload.get("station_id", "")
             part = payload.get("part_id", "")
-            return f"Part produced at {st}: {part}"
-        elif event_type == "robot.assembled":
-            num = payload.get("display_number", 0)
-            return f"Worker assembled: W-{num:03d}"
+            return f"{st.replace('_', ' ').title()}: {part} +1"
         elif event_type == "manufacturing.blocked":
             st = payload.get("station_id", "")
             missing = payload.get("missing_inputs", {})
             items = ", ".join(f"{k}: need {v}" for k, v in missing.items())
-            return f"Blocked at {st}: {items}"
+            return f"{st.replace('_', ' ').title()} blocked: {items}"
+        elif event_type == "assembly.completed":
+            num = payload.get("display_number", 0)
+            return f"Worker W-{num:03d} assembled"
+        elif event_type == "assembly.blocked":
+            missing = payload.get("missing_inputs", {})
+            items = ", ".join(f"{k}: need {v}" for k, v in missing.items())
+            return f"Assembly blocked: {items}"
         return f"{event_type}"
 
     def get_stream_health(self) -> str:
@@ -148,6 +164,7 @@ class InMemProjectionStore:
             "snapshot_occurred_at": self.latest_snapshot_occurred_at,
             "snapshot": self.latest_snapshot.model_dump() if self.latest_snapshot else None,
             "latest_command_receipt": self.latest_command_receipt,
+            "station_recipes": self.station_recipes,
         }
 
     def get_activity_log(self) -> List[Dict[str, Any]]:

@@ -32,4 +32,11 @@ echo "Installing requirements ..."
 echo "Starting Local Hive Controls Backend on http://127.0.0.1:8000 ..."
 echo ""
 cd "$SCRIPT_DIR"
-PYTHONPATH="$SCRIPT_DIR" "$UVICORN" backend.app:app --host 127.0.0.1 --port 8000 --reload
+PYTHONPATH="$SCRIPT_DIR" "$UVICORN" backend.app:app \
+  --host 127.0.0.1 --port 8000 --reload \
+  --log-config "$SCRIPT_DIR/log_config.json" || {
+  echo ""
+  echo "ERROR: Backend exited with code $?. Check the output above for details."
+  echo ""
+}
+read -rp "Press Enter to close..." || true
