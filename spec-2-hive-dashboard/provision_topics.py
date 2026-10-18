@@ -172,7 +172,7 @@ def create_topic(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create your 8 Confluent Cloud topics for the Hive workshop.",
+        description="Create your 10 Confluent Cloud topics for the Hive workshop.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

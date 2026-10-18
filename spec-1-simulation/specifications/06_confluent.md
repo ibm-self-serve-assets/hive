@@ -16,6 +16,6 @@ Do not treat a Kafka key as a Confluent management API key. Topic creation, ACL 
 
 Confirm Code Engine outbound access and attendee laptop Kafka access to the selected cluster. A private-only cluster requires an explicit network design; the default recommendation is an approved reachable cluster. Measure topic/key/client quotas against the cohort before class.
 
-Use the topic settings in the shared contract, respecting managed-cluster replication. Rehearse key rotation, revoked-key backlog behavior and permission-denied diagnostics. No Schema Registry service is needed for the current plain JSON contract.
+Use the topic settings in the shared contract, respecting managed-cluster replication. Rehearse key rotation, revoked-key backlog behavior and permission-denied diagnostics.
 
 Reference: https://docs.confluent.io/cloud/current/client-apps/config-client.html
