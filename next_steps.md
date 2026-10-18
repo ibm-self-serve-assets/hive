@@ -1,17 +1,18 @@
 # Next steps (working notes for Anthony and Bob)
 
 Running notes for us as the work progresses. Not for attendees or instructors.
-Flink work lives in `spec-3-stream-processing/`.
+Flink work lives in `spec-2-implement-flink/`.
 
 ## Working agreements
 
 - **Keep the specs current.** Whenever the simulation, the attendee backend/frontend code, or the Flink SQL changes, update the matching spec `.md` files in the same change:
-  - `spec-1-simulation/` specifications and README
-  - `spec-2-hive-dashboard/` specifications and `attendee_get_started.md`
-  - `spec-3-stream-processing/` README and the comments in the SQL files
+  - `spec-0-simulation/` specifications and README
+  - `spec-1-connect-simulation/` specifications and README
+  - `spec-2-implement-flink/` README and the comments in the SQL files
+  - `spec-3-hive-dashboard/` specifications and `attendee_get_started.md`
 - **Audience.**
-  - **Spec 1 (simulation) is written for instructors.** It can describe hidden state, server internals and the answer key.
-  - **Specs 2, 3 and later are written for attendees.** They must not reveal the simulation's hidden counters or internals, and the SQL files must stay commented well enough to run without help.
+  - **Spec 0 (simulation) is written for instructors.** It can describe hidden state, server internals and the answer key.
+  - **Specs 1, 2 and later are written for attendees.** They must not reveal the simulation's hidden counters or internals, and the SQL files must stay commented well enough to run without help.
 - **Attendee SQL is run in the Confluent Flink workspace, one statement per run.** Prefer a small number of files that each run once.
 - **Say what is untested.** Most Confluent behavior so far is confirmed only from workspace screenshots.
 
@@ -25,18 +26,19 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 
 | Item | Status |
 |---|---|
-| `flink/01_create_sink.sql` | Written. Creates the `job_durations` table. Not confirmed deployed. |
-| `flink/02_run_jobs.sql` | Updated. One `EXECUTE STATEMENT SET` with three jobs (gathering, manufacturing, assembly) with all 13 columns aligned. The statement-set form is **untested**. |
-| `flink/03_validate.sql` | Written. Check A passed in the workspace. Checks B-D need the sink and jobs. |
-| `README.md` | Updated with conceptual context, exact Flink pool creation steps (GCP/Dallas), SQL workspaces top-level navigation, and screenshots. |
+| `flink/01_create_sink.sql` | **Verified deployed** in Confluent Cloud. Table created successfully. |
+| `flink/02_run_jobs.sql` | **Verified running** in Confluent Cloud (`EXECUTE STATEMENT SET` processing live factory events with 0 lag). |
+| `flink/03_validate.sql` | **Verified passing** in Confluent Cloud (Checks A-C return expected derived durations and aggregations). |
+| `README.md` | Updated with conceptual context, exact Flink pool creation steps (GCP/Dallas), SQL workspace renaming (`hive_job_durations`), cell deletion workflow, and Flink console monitoring screenshots (screenshots 1-8). |
 
 Verified in the Confluent workspace (from screenshots):
 - The six source tables appear as raw `VARBINARY` `key`/`val` plus `$rowtime`.
-- Parsing works: `CAST(val AS STRING)` plus `JSON_VALUE` returns `job_id`, `sim_time_ms` and `occurred_at`.
+- Parsing works: `CAST(val AS STRING)` plus `JSON_VALUE` returns `job_id`, `sim_time_minutes` and `occurred_at`.
 - A manufacturing-only preview join returned rows, with `elapsed` matching the planned duration (10000 ms).
 - Topic event counts were roughly: gathering 1031/1026, manufacturing 534/531, assembly 11/11 (started/completed).
 
-Not yet done: Step 1 and Step 2 deployment confirmation, Tableflow enablement, windowed aggregation.
+Done: Flink `job_durations` stream correlation verified live in Confluent Cloud.
+Next immediate priority: Build the simplified foundation UI for Spec 1 (basic Confluent-to-UI connection & accelerated Days/Hours/Minutes sim clock).
 
 ## Design decisions (Flink)
 
@@ -44,7 +46,7 @@ Not yet done: Step 1 and Step 2 deployment confirmation, Tableflow enablement, w
 - **Source topics stay plain JSON.** The server and dashboard are unchanged for this step. Flink reads the raw bytes and parses them.
 - **Output:** a Flink-owned table/topic `job_durations`. Do not create that topic in `provision_topics.py`.
 - **Join window:** completed event from 5 s before to 1 min after the started event, on Kafka record time (typical gap is 5-15 s). Widen the upper bound if simulation speed is lowered.
-- **Duration columns:** `elapsed_sim_ms` (exact, speed-independent), `elapsed_wall_s` (whole seconds, coarse), `planned_duration_ms`.
+- **Duration columns:** `elapsed_sim_minutes` (exact, speed-independent), `elapsed_wall_s` (whole seconds, coarse), `planned_duration_ms`.
 - **Added columns:** `started_topic` and `completed_topic`, alongside `stage`.
 - **Determinism:** no `NOW()`, `UUID()` or `RAND()`. Only source event fields are used.
 - **Tableflow:** all topics are to be written to Tableflow via Flink-owned tables. Tableflow needs registered schemas, so Schema Registry is required for the Flink output tables. Changelog mode is fixed at first materialization: `job_durations` is `append`.
@@ -56,7 +58,7 @@ Not yet done: Step 1 and Step 2 deployment confirmation, Tableflow enablement, w
 - The workspace accepts **one statement per run**, so multiple `ALTER`s cannot be pasted together. The `ALTER TABLE ... MODIFY` step was dropped in favor of `CAST(val AS STRING)` inside the jobs.
 - `JSON_VALUE ... RETURNING BIGINT` is unsupported. Use `CAST(JSON_VALUE(...) AS BIGINT)`.
 - `occurred_at` is `2026-10-18T02:49:47.492738+00:00`. Flink cannot parse the `+00:00` suffix, so it is stripped and the value is read as `TIMESTAMP(3)` (UTC).
-- The `CAST_BINARY_TO_STRING` warning can be ignored. The server writes ASCII JSON via `json.dumps().encode("utf-8")`.
+- The `CAST_BINARY_TO_STRING` warning is informational and safe to ignore. `CAST(val AS STRING)` is universally compatible with both `BYTES` and `STRING` columns, whereas `MAKE_VALID_UTF8` fails if `val` is already typed as `STRING`.
 - `connection.test` probe rows appear on activity topics with a NULL `job_id`. They never match in the join.
 - Streaming queries keep running until stopped. Click Stop to avoid using compute pool capacity.
 - Topics hold 24 h of history, so the first deploy processes a backlog from earlier runs.
@@ -105,9 +107,12 @@ Events already carry every inventory change:
 8. **Known mismatch causes:** a server crash loses unsent events (the buffer is in memory), and a restart at zero creates a new `run_id`.
 9. [x] **Docs inconsistency:** `attendee_get_started.md` and `provision_topics.py` resolved to consistently describe all 10 topics defined in schema.
 
-## Open items
+## Open items & roadmap
 
-1. [x] Environment creation documented with Stream Governance Essentials (Schema Registry enabled by default in `hive_dev`). Next: deploy Step 1 and Step 2 and verify rows with Step 3 checks.
+1. [ ] **Step 1 — Simplified Foundation UI (Spec 1 Hive Dashboard)**:
+   - **Basic Confluent Connection**: Create a clean, simple UI that shows the direct stream connection from Confluent topics to the dashboard.
+   - **Stream-Only Activity**: Display only the raw discrete `*.started` and `*.completed` events as they arrive from Kafka (no pre-calculated or leaked inventory answer keys).
+   - **Simulation Clock (Days, Hours, Minutes)**: Update sim time formatting from raw milliseconds to an accelerated simulation calendar format: `Day X, HH:MM` (or `X days, Y hrs, Z mins`). The clock advances at the accelerated simulation rate rather than tracking real-world wall clock time.
 2. Tableflow runbook: enable and teardown commands, storage (managed or own bucket), format (Iceberg or Delta). Teardown order: Tableflow topic, Flink statements, Flink table, Kafka topic, schemas.
 3. Write the ledger and balances SQL for attendees in the same style as `job_durations` (few files, each run once, commented).
 4. List the events the future sell, upgrade and assign commands need, so the contract is ready for the queen bee.
