@@ -79,8 +79,77 @@ def test_conservation_of_materials():
         + sim.completed_robots_count * chassis_per_robot
     )
 
-    total_resin_accounted = sim.resources["resin"] + (active_chassis_job + total_chassis) * resin_per_chassis
+    staged_resin = sum(cart.get("resin", 0) for cart in sim.carts.values())
+    total_resin_accounted = (
+        sim.resources["resin"] + staged_resin + (active_chassis_job + total_chassis) * resin_per_chassis
+    )
     assert total_resin_accounted == total_delivered_resin
+
+
+def _new_sim():
+    return SimulationRun(
+        factory_id=str(uuid.uuid4()), server_epoch=str(uuid.uuid4()),
+        lifecycle_status="running",
+    )
+
+
+def test_cart_accumulates_partial_inputs_across_passes():
+    sim = _new_sim()
+    seq = iter(range(1, 10**6))
+    gen = lambda: next(seq)
+
+    # Only 1 metals in stock: actuator fabrication (needs 2) must hold it, not lose it
+    sim.completed_parts_count["actuator_fabrication"] = 0
+    for st in ("structural_molding", "electronics_assembly", "battery_assembly"):
+        sim.completed_parts_count[st] = 5  # lowest count => actuator stage first
+    sim.resources.update({"energy": 1, "metals": 1, "copper": 1})
+    sim._run_scheduling_pass(0, "t", gen)
+    assert "actuator_fabrication" not in sim.active_jobs
+    assert sim.carts["actuator_fabrication"] == {"energy": 1, "metals": 1, "copper": 1}
+    assert sim.resources["metals"] == 0
+
+    # A second metals delivery completes the cart and the job starts
+    sim.resources["metals"] += 1
+    sim._run_scheduling_pass(1, "t", gen)
+    assert "actuator_fabrication" in sim.active_jobs
+    assert sim.carts["actuator_fabrication"] == {}
+
+
+def test_single_metal_stations_cannot_starve_actuator_fabrication():
+    sim = _new_sim()
+    seq = iter(range(1, 10**6))
+    gen = lambda: next(seq)
+
+    # Actuator fabrication has the fewest parts, so it is served first and keeps its metals
+    for st in ("structural_molding", "electronics_assembly", "battery_assembly"):
+        sim.completed_parts_count[st] = 5
+    sim.resources.update({"energy": 10, "resin": 10, "copper": 10, "metals": 1})
+    sim._run_scheduling_pass(0, "t", gen)
+    assert sim.carts["actuator_fabrication"]["metals"] == 1
+    assert "structural_molding" not in sim.active_jobs
+    assert "battery_assembly" not in sim.active_jobs
+
+    sim.resources["metals"] += 1  # next delivery
+    sim._run_scheduling_pass(1, "t", gen)
+    assert "actuator_fabrication" in sim.active_jobs
+
+
+def test_assembly_cart_accumulates_parts_incrementally():
+    sim = _new_sim()
+    seq = iter(range(1, 10**6))
+    gen = lambda: next(seq)
+
+    sim.parts.update({"chassis": 1, "electronics": 3, "battery": 2, "actuator": 5})
+    sim._run_scheduling_pass(0, "t", gen)
+    assert "worker_assembly" not in sim.active_jobs
+    assert sim.carts["worker_assembly"]["actuator"] == 5
+    assert sim.parts["actuator"] == 0
+
+    sim.parts["actuator"] += 3
+    sim._run_scheduling_pass(1, "t", gen)
+    assert "worker_assembly" in sim.active_jobs
+    assert sim.carts["worker_assembly"] == {}
+    assert all(v == 0 for v in sim.parts.values())
 
 
 def test_forager_placeholder_is_declared_but_not_scheduled():

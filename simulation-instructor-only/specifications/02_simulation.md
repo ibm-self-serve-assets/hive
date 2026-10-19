@@ -24,7 +24,7 @@ Scope every state lookup, locked update, scheduler task, credential lookup and p
 
 The resource store holds resin, silicon, metals, copper and energy. Quantities are whole units. Energy is used in battery assembly; there is no continuous power drain in this first version.
 
-A new run begins paused, with no resources, parts or robots. Each resource has its own independent delivery cycle, defined by `interval_sim_seconds` and `quantity` in `schemas/simulation_rules.json` (see `03_data.md`). Clicking Start begins every resource's first cycle and emits `gathering.started` for each. When a cycle's timer fires, the quantity is added directly to the simulation's inventory and `gathering.completed` is recorded in the same locked in-memory update. The next cycle starts immediately with a new `gathering.started`.
+A new run begins paused, with no resources, parts or robots. Each resource has its own independent delivery cycle, defined by `interval_sim_minutes` and `quantity` in `schemas/simulation_rules.json` (see `03_data.md`). Clicking Start begins every resource's first cycle and emits `gathering.started` for each. When a cycle's timer fires, the quantity is added directly to the simulation's inventory and `gathering.completed` is recorded in the same locked in-memory update. The next cycle starts immediately with a new `gathering.started`.
 
 A delivery does not depend on producer acknowledgment or consumer receipt. Its job ID is created once. A retry of its event is an observation retry, not a second delivery.
 
@@ -32,32 +32,34 @@ A delivery does not depend on producer acknowledgment or consumer receipt. Its j
 
 Each station has one active job slot. Structural molding makes chassis, electronics assembly makes electronics, actuator fabrication makes actuators, and battery assembly makes batteries.
 
-An idle station checks that every required input is available. If so, it atomically consumes those inputs, creates a job with start/end times and begins work. If any input is missing, it consumes nothing and waits. On completion, it adds one output part and frees its slot. If inputs are still available, it may immediately start another job at that simulated instant.
+Each station has an internal staging cart. On every scheduling pass an idle station moves whatever it can from factory stock into its cart: for each required input it takes `min(still needed, available)`. When the cart holds the complete recipe, the cart is consumed, a job is created with start/end times and the station begins work. Until then the station keeps what it has staged and waits for the rest; staged inputs are no longer in factory stock. On completion, it adds one output part and frees its slot. If inputs are still available, it may immediately stage and start another job at that simulated instant.
 
-Jobs do not compete for factory workers or shared machine capacity in this version. They compete only for inventory. Station cycles and recipes are in `03_data.md`.
+This prevents starvation of multi-unit recipes. Structural molding and battery assembly need only 1 metals, so under an all-or-none check they would consume every single metals delivery on arrival and actuator fabrication (2 metals) could never accumulate them.
+
+Jobs do not compete for factory workers or shared machine capacity in this version. They compete only for inventory. Station cycles and recipes are in `schemas/simulation_rules.json`.
 
 ### Robot assembly
 
-`worker_assembly` is another automatic station with one active slot. It builds the `engineer` robot. It starts only when 1 chassis, 3 electronics, 2 batteries and 8 actuators are available. Consume them together at job start. After 10 simulated seconds, add one engineer to completed inventory.
+`worker_assembly` is another automatic station with one active slot. It builds the `engineer` robot. It works like a manufacturing station: it incrementally moves finished parts into its assembly cart and starts only when the cart holds the full recipe in `simulation_rules.json`. The cart is consumed at job start. When the job duration elapses, add one engineer to completed inventory.
 
 Robots are identified by type (`robot_id`: `engineer` or `forager`), the same way parts are identified by `part_id`. There is no per-robot UUID or display label such as W-001; completed robots are counted. Completed robots remain in inventory. Shipping, commissioning, colony registration and task allocation are later features.
 
-**Forager placeholder:** `forager_assembly` will build the `forager` robot. It is defined in `simulation_rules.json` with the same recipe and duration as `worker_assembly` (1 chassis, 3 electronics, 2 batteries, 8 actuators, 10 s), and `robot_id` accepts `forager` in the schemas. The simulation does not create or schedule this station yet: no forager events are emitted and snapshots still list five stations. A later specification will enable it and set its real recipe.
+**Forager placeholder:** `forager_assembly` will build the `forager` robot. It is defined in `simulation_rules.json` with the same recipe and duration as `worker_assembly`, and `robot_id` accepts `forager` in the schemas. The simulation does not create or schedule this station yet: no forager events are emitted and snapshots still list five stations. A later specification will enable it and set its real recipe.
 
-## Scheduling without manufacturing priorities
+## Scheduling order
 
-There is no preferred station, production target or optimization policy. Each idle station attempts work as inputs become available. Actual state updates are serialized to prevent two jobs spending the same resources.
+There is no production target or optimization policy. Each idle station attempts work as inputs become available. Actual state updates are serialized to prevent two jobs spending the same resources.
 
-Implementation choice for otherwise simultaneous attempts: use a deterministic rotating starting position through the five stations. Every scheduling pass considers each station once, beginning at the stored cursor, then advances the cursor by one. This gives a repeatable tie-break without permanently favoring the first station in a list. Keep the cursor with the factory object. It is not a production priority setting or a promise that all stations always have enough stock.
+Implementation: parts manufacturing stations are served in order of fewest completed parts first, so the station that has produced the least stages inputs before the others. Assembly stages from finished-parts stock independently. This ordering is a fairness rule, not a promise that all stations always have enough stock; a station holding a partial cart does not release it.
 
-Run a scheduling pass on initialization/resume and when a delivery or completion changes available inventory; do not rotate the cursor merely because an otherwise uneventful clock tick occurred. This keeps outcomes independent of clock wake-up jitter.
-- **Pass iteration cascade**: Within an instant $t$, starting one job or completing another can immediately enable further station starts. Loop the tie-break pass across all 5 stations until a complete pass starts no new jobs, advancing the cursor by 1 on each full pass.
+Run a scheduling pass on initialization/resume and when a delivery or completion changes available inventory; do not run one merely because an otherwise uneventful clock tick occurred. This keeps outcomes independent of clock wake-up jitter.
+- **Pass iteration cascade**: Within an instant $t$, starting one job or completing another can immediately enable further station starts. Loop the manufacturing pass until a complete pass starts no new jobs.
 
 At a simulated instant:
 
 1. Apply any due delivery.
 2. Finish all jobs due at that instant and credit their outputs once.
-3. Let idle stations attempt to start, using the rotating tie-break and the inventory now available.
+3. Let idle stations attempt to start, in fewest-completed-parts order, staging from the inventory now available.
 4. Apply state and enqueue events together under the factory lock.
 
 A station consumes at start and produces at completion; never deduct its recipe a second time. A shortage leaves the station waiting and available for the next pass. Parts made at an instant can be used by assembly at that same instant.
@@ -73,7 +75,7 @@ Pause freezes simulated time, future deliveries and job progress. Already queued
 
 ## A concrete first cycle
 
-At time zero every resource starts its first delivery cycle (`gathering.started`) and inventory is empty, so no station can start yet and no scheduling pass runs at time zero. When the first cycles complete at their `interval_sim_seconds` (10 s with the current rules), the quantities are added to inventory, the next cycles start, and any station whose full recipe is now available starts a job at that same simulated instant. A free station can begin its next job immediately if its inputs remain available. Assembly starts only once the complete engineer recipe is available. At 5x these same simulated deadlines occur faster in wall time; the recipes and manufacturing order do not change.
+At time zero every resource starts its first delivery cycle (`gathering.started`) and inventory is empty, so no station can start yet and no scheduling pass runs at time zero. When the first cycles complete at their `interval_sim_minutes`, the quantities are added to inventory, the next cycles start, and any station whose full recipe is now available starts a job at that same simulated instant. A free station can begin its next job immediately if its inputs remain available. Assembly starts only once the complete engineer recipe is available. At 5x these same simulated deadlines occur faster in wall time; the recipes and manufacturing order do not change.
 
 These are simulation results first. They become visible on the dashboard only after the corresponding snapshot has passed through producer, broker and consumer.
 

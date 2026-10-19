@@ -45,39 +45,13 @@ The latest request explicitly allows manual assignment in Spec 3 and automated Q
 
 ## 6. Manufacturing model
 
-Current dashboard resource categories: **resin, silicon, metals, copper, energy**.
+The machine-readable source of truth is `simulation-instructor-only/schemas/simulation_rules.json`. It defines the resources, per-resource delivery intervals and quantities, manufacturing recipes, robot assembly recipe and job durations; they are not repeated here. Event and snapshot shapes are in `spec-shared/schemas/event_payloads.json`.
 
-The machine-readable source of truth is `simulation-instructor-only/schemas/simulation_rules.json`; the tables below mirror its current starting values, which will be tuned.
-
-**Resource deliveries.** Each resource has its own independent delivery timer (a `gathering.started` → `gathering.completed` cycle that repeats). All five currently deliver every 10 simulated seconds:
-
-| Resource | Units per delivery |
-| --- | ---: |
-| Energy | 7 |
-| Resin | 3 |
-| Silicon | 3 |
-| Metals | 2 |
-| Copper | 5 |
-
-**Parts stations.** Each job takes 10 simulated seconds:
-
-| Manufacturing station | Inputs per job | Output |
-| --- | --- | --- |
-| Structural molding | 1 energy, 3 resin, 1 metals | Chassis |
-| Electronics assembly | 1 energy, 3 silicon, 2 copper | Electronics |
-| Actuator fabrication | 1 energy, 2 metals, 1 copper | Actuator |
-| Battery assembly | 5 energy, 2 copper, 1 metals | Battery |
-
-**Robot assembly.** A robot needs 1 chassis, 3 electronics, 2 batteries and 8 actuators and takes 10 simulated seconds:
-
-| Station | Robot (`robot_id`) | Status |
-| --- | --- | --- |
-| `worker_assembly` | `engineer` | Active in Spec 1 |
-| `forager_assembly` | `forager` | **Placeholder**: declared with the same recipe and duration, but not scheduled, no events emitted, not shown yet |
+Each resource has its own independent delivery timer (a `gathering.started` → `gathering.completed` cycle that repeats). `forager_assembly` is a **placeholder**: declared with the same recipe and duration as `worker_assembly`, but not scheduled, no events emitted, not shown yet.
 
 Robots are identified by type (`robot_id`), like parts are by `part_id`. There is no per-robot UUID or "W-001" display label; completed robots are counted.
 
-These are abstract simulation recipes, not claims about real electronics or battery manufacturing. Quantities, durations and energy semantics are tuning values. Capacities and priorities are not modelled: stations compete only for inventory, and simultaneous starts use a rotating tie-break rather than a production priority.
+These are abstract simulation recipes, not claims about real electronics or battery manufacturing. Quantities, durations and energy semantics are tuning values. Capacities are not modelled: stations compete only for inventory. Each station has a staging cart and grabs whatever part of its recipe is in stock on each scheduling pass, holding it until the recipe is complete; the manufacturing station with the fewest completed parts is served first. This keeps multi-unit recipes from being starved by stations that need only one of a shared resource.
 
 The four stations can work concurrently subject to inventory. Parts feed robot assembly. The recipe is a provisional mock recipe, not a finalized engineering BOM.
 
