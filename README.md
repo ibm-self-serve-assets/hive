@@ -1,3 +1,0 @@
-# Hive Robotics
-
-Coming soon

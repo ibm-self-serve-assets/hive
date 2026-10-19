@@ -1,0 +1,87 @@
+{
+  "parts": ["chassis", "electronics", "actuator", "battery"],
+  "resources": [
+    { "name": "energy",
+      "interval_sim_minutes": 2
+    },
+    { "name": "resin",
+      "interval_sim_minutes": 3
+    },
+    { "name": "silicon",
+      "interval_sim_minutes": 5
+    },
+    { "name": "metals",
+      "interval_sim_minutes": 6
+    },
+    { "name": "copper",
+      "interval_sim_minutes": 3
+    }
+  ],
+  "manufacturing": [
+    { "name": "structural_molding",
+      "output_id": "chassis",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "energy": 1,
+        "resin": 3,
+        "metals": 1
+      }
+    },
+    { "name": "Electronics assembly",
+      "output_id": "electronics",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "energy": 1,
+        "silicon": 3,
+        "copper": 2
+      }
+    },
+    { "name": "Actuator fabrication",
+      "output_id": "actuator",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "energy": 1,
+        "metals": 2,
+        "copper": 1
+      }
+    },
+    { "name": "Battery assembly",
+      "output_id": "battery",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "energy": 5,
+        "copper": 2,
+        "metals": 1
+      }
+    }
+  ],
+  "worker_assembly": {
+    "name": "Worker assembly",
+    "inputs": {
+      "chassis": 1,
+      "electronics": 3,
+      "battery": 2,
+      "actuator": 8
+    },
+    "robots" : [
+      { "name": "engineer",
+        "interval_sim_minutes": 10
+      }
+    ]
+  },
+  "forager_assembly": {
+    "placeholder": true,
+    "name": "Forager assembly",
+    "inputs": {
+      "chassis": 1,
+      "electronics": 3,
+      "battery": 2,
+      "actuator": 8
+    },
+    "robots" : [
+      { "name": "forager",
+        "interval_sim_minutes": 10
+      }
+    ]
+  }
+}
