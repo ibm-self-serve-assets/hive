@@ -23,6 +23,8 @@ from server.producer import FactoryKafkaProducer
 
 logger = logging.getLogger("hive.factory")
 
+MAX_SIM_MS = 7 * 24 * 60 * 60_000  # 1 week = 10,080 sim minutes
+
 
 class FactoryInstance:
     def __init__(
@@ -90,8 +92,7 @@ class FactoryInstance:
     def check_expiry(self) -> bool:
         if self.is_expired:
             return True
-        max_sim_ms = 14 * 24 * 60 * 60_000  # 14 days = 20,160 sim minutes
-        if datetime.now(timezone.utc) >= self.expires_at or self.current_run.sim_time_ms >= max_sim_ms:
+        if datetime.now(timezone.utc) >= self.expires_at or self.current_run.sim_time_ms >= MAX_SIM_MS:
             self.is_expired = True
             self.current_run.lifecycle_status = "expired"
             self.current_run.operational_error = None
@@ -671,8 +672,7 @@ class FactoryManager:
                         if elapsed_sim_ms <= 0:
                             continue
 
-                        max_sim_ms = 14 * 24 * 60 * 60_000  # 14 days = 20,160 sim minutes
-                        target_sim_time = min(factory.current_run.sim_time_ms + elapsed_sim_ms, max_sim_ms)
+                        target_sim_time = min(factory.current_run.sim_time_ms + elapsed_sim_ms, MAX_SIM_MS)
 
                         # Advance simulation
                         events = factory.current_run.advance_to(

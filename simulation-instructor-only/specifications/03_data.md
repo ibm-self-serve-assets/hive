@@ -32,6 +32,8 @@ Durations are internal: no event or snapshot carries `duration_ms`.
 
 Use a 100 ms clock wake-up interval and 1x/5x speeds. Deliveries and jobs use simulated time. Dashboard snapshots use wall time: up to five per second while running, plus control/lifecycle snapshots and a one-second paused heartbeat.
 
+A run is capped at one simulated week (`MAX_SIM_MS` in `server/factory_manager.py`). When the clock reaches the cap the factory expires, like a TTL expiry.
+
 ## Conservation checks
 
 For each run, delivered resources equal available resources plus resources consumed by jobs. Produced parts equal available parts plus parts consumed by assembly. Completed robots equal unique completed assembly jobs. Active jobs have already consumed their inputs. Restart at zero starts new per-run totals; abandoned old-run inputs do not transfer to the new run.

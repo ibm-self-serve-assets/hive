@@ -1,5 +1,4 @@
 import React from 'react';
-import { FlowDots } from '../../components/FlowDots';
 import { EventPanel } from '../../components/EventPanel';
 import type { LevelScreenProps } from '../types';
 
@@ -28,7 +27,6 @@ const ROBOTS: { id: string; label: string; icon: string }[] = [
 
 export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {
   const {
-    running,
     gathering_completed,
     manufacturing_completed,
     assembly_completed,
@@ -37,7 +35,7 @@ export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <div className="flex items-start gap-0 min-w-0">
+      <div className="flex items-start gap-8 min-w-0">
 
         {/* ── Lane 1: Resource gathering ─────────────────────────────── */}
         <section className="flex-none" style={{ minWidth: 300 }}>
@@ -69,8 +67,6 @@ export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {
           <EventPanel title="Resource events" events={events?.gathering ?? []} />
         </section>
 
-        <FlowDots running={running} />
-
         {/* ── Lane 2: Parts manufacturing ────────────────────────────── */}
         <section className="flex-none" style={{ minWidth: 280 }}>
           <div
@@ -100,8 +96,6 @@ export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {
           </div>
           <EventPanel title="Manufacturing events" events={events?.manufacturing ?? []} />
         </section>
-
-        <FlowDots running={running} />
 
         {/* ── Lane 3: Robot assembly ─────────────────────────────────── */}
         <section className="flex-none" style={{ minWidth: 220 }}>

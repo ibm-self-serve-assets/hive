@@ -35,7 +35,7 @@ export function describeEvent(ev: HiveEvent): string {
     case 'gathering.started':
       return `${titleCase(String(p.resource_id ?? ''))} +${asNum(p.quantity)} started`;
     case 'gathering.completed':
-      return `${titleCase(String(p.resource_id ?? ''))} +${asNum(p.quantity)} delivered`;
+      return titleCase(String(p.resource_id ?? ''));
     case 'gathering.blocked':
       return `${titleCase(String(p.resource_id ?? ''))}: ${String(p.reason ?? 'blocked')}`;
     case 'manufacturing.started':

@@ -92,6 +92,7 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 - [ ] Fold `level-3-hive-dashboard/frontend`'s own `ManufacturingFloor.tsx` into `levels/level3/`, so there is one frontend.
 - [ ] Gate each dropdown entry on the validation hook (roadmap item 4), for example disable it or warn until the attendee's previous level works.
 - [ ] Persist the selected level (for example `localStorage`) so a reload keeps it.
+- [ ] Level 2: bring back the dotted flow line between the lanes (`components/FlowDots.tsx` is kept, but Level 1 no longer uses it). Tie it to the Flink-derived data, for example job durations.
 
 ## Simulation notes: assembly and `duration_ms`
 
