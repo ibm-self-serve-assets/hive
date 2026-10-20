@@ -4,13 +4,34 @@ import { Sidebar } from './components/Sidebar';
 import { DEFAULT_LEVEL_ID, LEVELS } from './levels/registry';
 import { DashboardState, EMPTY_STATE } from './types';
 
+/** Read the current hash and return the matching level id, or the default. */
+function levelIdFromHash(): string {
+  const hash = window.location.hash.replace('#', '');
+  return LEVELS.find((l) => l.id === hash)?.id ?? DEFAULT_LEVEL_ID;
+}
+
 export const App: React.FC = () => {
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
   const [csrfToken, setCsrfToken] = useState('');
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [levelId, setLevelId] = useState(DEFAULT_LEVEL_ID);
-  const { Screen } = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
+  const [levelId, setLevelId] = useState(levelIdFromHash);
+  const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
+  const { Screen, Requirements } = level;
+  const isUnlocked = level.isUnlocked ? level.isUnlocked(state) : true;
   const [isCommandPending, setIsCommandPending] = useState(false);
+
+  // Keep hash in sync when levelId changes programmatically (dropdown)
+  const handleLevelChange = (id: string) => {
+    window.location.hash = id;
+    setLevelId(id);
+  };
+
+  // Sync levelId if the user navigates with browser back/forward buttons
+  useEffect(() => {
+    const onHashChange = () => setLevelId(levelIdFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   // Fetch CSRF token and check config on mount
   useEffect(() => {
@@ -129,10 +150,10 @@ export const App: React.FC = () => {
           isCommandPending={isCommandPending}
           onSendCommand={handleSendCommand}
           levelId={levelId}
-          onLevelChange={setLevelId}
+          onLevelChange={handleLevelChange}
         />
         <main className="flex-1 min-h-0 overflow-auto">
-          <Screen state={state} />
+          {isUnlocked ? <Screen state={state} /> : Requirements ? <Requirements /> : null}
         </main>
       </div>
     </div>

@@ -4,25 +4,25 @@ import type { LevelScreenProps } from '../types';
 
 // ── Resource gathering ────────────────────────────────────────────────────────
 const RESOURCES: { id: string; label: string; icon: string }[] = [
-  { id: 'copper',  label: 'Copper',  icon: '/icons/resource_copper.png' },
-  { id: 'energy',  label: 'Energy',  icon: '/icons/resources_energy.png' },
-  { id: 'metals',  label: 'Metals',  icon: '/icons/resources_metals.png' },
-  { id: 'resin',   label: 'Resin',   icon: '/icons/resources_resin.png' },
-  { id: 'silicon', label: 'Silicon', icon: '/icons/resources_silicon.png' },
+  { id: 'copper',  label: 'Copper',  icon: '/icons/svg/resource_copper.svg' },
+  { id: 'energy',  label: 'Energy',  icon: '/icons/svg/resources_energy.svg' },
+  { id: 'metals',  label: 'Metals',  icon: '/icons/svg/resources_metals.svg' },
+  { id: 'resin',   label: 'Resin',   icon: '/icons/svg/resources_resin.svg' },
+  { id: 'silicon', label: 'Silicon', icon: '/icons/svg/resources_silicon.svg' },
 ];
 
 // ── Parts manufacturing ───────────────────────────────────────────────────────
 const STATIONS: { id: string; label: string; icon: string }[] = [
-  { id: 'actuator_fabrication',  label: 'Actuator Fabrication', icon: '/icons/parts_actuator.png' },
-  { id: 'battery_assembly',      label: 'Battery Assembly',     icon: '/icons/parts_battery.png' },
-  { id: 'structural_molding',    label: 'Structural Molding',   icon: '/icons/parts_chassis.png' },
-  { id: 'electronics_assembly',  label: 'Electronics Assembly', icon: '/icons/parts_electronics.png' },
+  { id: 'actuator_fabrication',  label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg' },
+  { id: 'battery_assembly',      label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg' },
+  { id: 'structural_molding',    label: 'Structural Molding',   icon: '/icons/svg/parts_chassis.svg' },
+  { id: 'electronics_assembly',  label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg' },
 ];
 
 // ── Robot assembly ────────────────────────────────────────────────────────────
 const ROBOTS: { id: string; label: string; icon: string }[] = [
-  { id: 'engineer', label: 'Engineer', icon: '/icons/robot-engineer.png' },
-  { id: 'forager',  label: 'Forager',  icon: '/icons/harvester.png' },
+  { id: 'engineer', label: 'Engineer', icon: '/icons/svg/robot-engineer.svg' },
+  { id: 'forager',  label: 'Forager',  icon: '/icons/svg/harvester.svg' },
 ];
 
 export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {

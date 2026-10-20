@@ -5,7 +5,7 @@
 -- WHAT THIS DOES
 --   Starts one continuous Flink statement that runs three jobs, one each for
 --   gathering, manufacturing and assembly. Each job pairs a "started" event with
---   its "completed" event and writes the time between them to `job_durations`.
+--   its "completed" event and writes the time between them to `calculated_values`.
 --
 -- BEFORE YOU RUN
 --   * Step 1 (01_create_sink.sql) has been run.
@@ -47,7 +47,7 @@ EXECUTE STATEMENT SET
 BEGIN
 
 -- ---- gathering: gathering-started -> gathering-completed --------------------
-INSERT INTO `job_durations`
+INSERT INTO `calculated_values`
 SELECT
   s.job_id, s.factory_id, s.run_id,
   'gathering'                                         AS stage,
@@ -82,7 +82,7 @@ JOIN (
   AND c.row_time BETWEEN s.row_time - INTERVAL '5' SECOND AND s.row_time + INTERVAL '1' MINUTE;
 
 -- ---- manufacturing: manufacturing-started -> manufacturing-completed --------
-INSERT INTO `job_durations`
+INSERT INTO `calculated_values`
 SELECT
   s.job_id, s.factory_id, s.run_id,
   'manufacturing'                                     AS stage,
@@ -117,7 +117,7 @@ JOIN (
   AND c.row_time BETWEEN s.row_time - INTERVAL '5' SECOND AND s.row_time + INTERVAL '1' MINUTE;
 
 -- ---- assembly: assembly-started -> assembly-completed -----------------------
-INSERT INTO `job_durations`
+INSERT INTO `calculated_values`
 SELECT
   s.job_id, s.factory_id, s.run_id,
   'assembly'                                          AS stage,

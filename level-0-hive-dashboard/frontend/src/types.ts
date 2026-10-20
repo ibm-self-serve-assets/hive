@@ -36,8 +36,24 @@ export interface DashboardState {
   manufacturing_active: Record<string, boolean>;
   assembly_active: Record<string, boolean>;
 
+  // Blocked state: keyed by resource_id / station_id; value is missing_inputs (or reason for gathering)
+  gathering_blocked: Record<string, Record<string, unknown>>;
+  manufacturing_blocked: Record<string, Record<string, number>>;
+  assembly_blocked: Record<string, Record<string, number>>;
+
+  // Recipe inputs captured from *.started events: station_id → { input_id → quantity }
+  manufacturing_inputs: Record<string, Record<string, number>>;
+  assembly_inputs: Record<string, Record<string, number>>;
+
+  // Latest job durations from the calculated_values Flink topic:
+  // subject (resource_id or station_id) → elapsed_sim_minutes
+  job_durations: Record<string, number>;
+
   // Recent raw events per section, newest first
   events: Record<EventSection, HiveEvent[]>;
+
+  // True once the calculated_values topic exists (created by the attendee's Flink SQL) (unlocks Level 2)
+  calculated_values_ready: boolean;
 }
 
 export const EMPTY_STATE: DashboardState = {
@@ -53,7 +69,14 @@ export const EMPTY_STATE: DashboardState = {
   gathering_active: {},
   manufacturing_active: {},
   assembly_active: {},
+  gathering_blocked: {},
+  manufacturing_blocked: {},
+  assembly_blocked: {},
+  manufacturing_inputs: {},
+  assembly_inputs: {},
+  job_durations: {},
   events: { gathering: [], manufacturing: [], assembly: [] },
+  calculated_values_ready: false,
 };
 
 /**

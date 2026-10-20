@@ -10,13 +10,13 @@ However, raw events only tell you what happened at an instant in time:
 
 **The Problem:** There is no single event that tells you how long a job actually took, whether it ran on schedule, or how station performance is trending across stages.
 
-**Your Objective:** As a stream processing engineer, you will use **Apache Flink on Confluent Cloud** to correlate unbounded event streams in real time. You will build an interval-join pipeline that pairs started and completed events by `job_id`, calculates accurate job durations, and outputs continuous, typed performance metrics to a unified `job_durations` stream.
+**Your Objective:** As a stream processing engineer, you will use **Apache Flink on Confluent Cloud** to correlate unbounded event streams in real time. You will build an interval-join pipeline that pairs started and completed events by `job_id`, calculates accurate job durations, and outputs continuous, typed performance metrics to a unified `calculated_values` stream.
 
 ```
 ┌─────────────────────────┐
 │   *.started topic       ├──┐
 └─────────────────────────┘  │   Flink Stateful Join
-                             ├──► (matches on job_id)  ───►  job_durations table & topic
+                             ├──► (matches on job_id)  ───►  calculated_values table & topic
 ┌─────────────────────────┐  │   [within 1-min window]      (Schema Registry + Tableflow ready)
 │   *.completed topic     ├──┘
 └─────────────────────────┘
@@ -37,8 +37,8 @@ Your factory publishes raw JSON events across three production stages (defined i
 
 Each event is wrapped in a standard envelope containing metadata (`occurred_at`, `sim_time_minutes`, `factory_id`, `run_id`) and a `payload` containing `job_id` and the details of the job (resource, station or output).
 
-### 2. Output Stream (`job_durations`)
-Flink produces a unified, append-only stream and backing Kafka topic named `job_durations`:
+### 2. Output Stream (`calculated_values`)
+Flink produces a unified, append-only stream and backing Kafka topic named `calculated_values`:
 
 | Derived Metric / Field | Source / Calculation | Why It Matters |
 |---|---|---|
@@ -134,7 +134,7 @@ Start by ensuring your dashboard is:
 #### C. Create the Sink Table
 1. Open [`flink/01_create_sink.sql`](flink/01_create_sink.sql).
 2. Copy the entire SQL statement, paste it into the **first workspace cell** and click **Run**.
-  - **What this does:** Registers the `job_durations` table in Flink, generates the registered schema in Schema Registry, and creates the underlying Kafka topic with `append` changelog mode.
+  - **What this does:** Registers the `calculated_values` table in Flink, generates the registered schema in Schema Registry, and creates the underlying Kafka topic with `append` changelog mode.
   - **Expected status:** **Completed**. This DDL statements executes once and finishes immediately.
 
 <img src="screenshots/screenshot-14.png" width="75%" />
@@ -142,7 +142,7 @@ Start by ensuring your dashboard is:
 #### C. Deploy the Stream Processing Jobs
 1. Open [`flink/02_run_jobs.sql`](flink/02_run_jobs.sql).
 2. Copy the entire `EXECUTE STATEMENT SET ... BEGIN ... END;` block, paste it into the **second workspace cell** and click **Run**.
-  - **What this does:** Submits three continuous streaming jobs (gathering, manufacturing, assembly) bundled into a single Flink statement. Flink continuously joins incoming `started` and `completed` events and writes the correlated duration records into `job_durations`.
+  - **What this does:** Submits three continuous streaming jobs (gathering, manufacturing, assembly) bundled into a single Flink statement. Flink continuously joins incoming `started` and `completed` events and writes the correlated duration records into `calculated_values`.
   - **Expected status:** **Running**. Unlike the earlier DDL commands creating the Sink table, stream processing queries are continuous, long-running background jobs that stay active on your compute pool, listening for incoming Kafka events and calculating durations in real time.
   - Ignore the warning.  This is because the simulation event producer is not using the Confluent's Schema Registry to keep this workshop simple to start.
 3. So do **not** click **Stop**.  Clicking the red **Stop** button cancels and terminates your background Flink streaming pipeline.
@@ -170,6 +170,8 @@ To inspect and verify your active streaming statement running on your compute po
 3. You will see the statements that you just executed listed.  Ensure only the Statement of type **Execute Statement Set** has status **Running**:
 
 <img src="screenshots/screenshot-18.png" width="75%" />
+
+> **Dashboard unlock:** In the dashboard, choosing **Level 2** from the Levels dropdown hides the simulation controls and shows what is required, until the `calculated_values` topic exists. Running `01_create_sink.sql` creates it, so the controls appear shortly after that step. The topic holds no records until the simulation runs, so start it afterwards.
 
 > **⚠️ Gate Check — Do Not Proceed If Not Running:**
 > Your statement status must be **Running**. If it is stopped or missing, verify that your factory simulation is running, ensure your compute pool is active, and re-run [`flink/02_run_jobs.sql`](flink/02_run_jobs.sql).
@@ -266,7 +268,7 @@ confluent flink shell \
 
 ## Technical Notes & Best Practices
 
-- **Topic Creation:** `provision_topics.py` provisions the source topics. Do **not** pre-create `job_durations` manually; Flink creates and manages this topic and its schema.
+- **Topic Creation:** `provision_topics.py` provisions the source topics. Do **not** pre-create `calculated_values` manually; Flink creates and manages this topic and its schema.
 - **JSON Parsing (`CAST(val AS STRING)`):** The source Kafka topics contain plain JSON records. Using `CAST(val AS STRING)` ensures string compatibility for `JSON_VALUE` parsing regardless of whether the column is typed as `BYTES` or `STRING`.
 - **Timestamp Resolution:** `elapsed_sim_minutes` is exact and simulation-speed independent. `elapsed_wall_s` uses coarse whole seconds and will vary based on factory simulation speed.
 - **Schema Registry & Tableflow:** The sink table uses `json-registry` (`JSON_SR`). Because Tableflow automatically materializes Kafka topics into Apache Iceberg tables, having a registered schema is mandatory.

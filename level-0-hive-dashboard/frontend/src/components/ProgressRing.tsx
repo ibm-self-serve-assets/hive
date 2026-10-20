@@ -1,39 +1,57 @@
 import React from 'react';
 
 interface ProgressRingProps {
-  /** Optional 0–100 progress */
-  percent?: number;
-  /** Label shown in the centre (e.g. "+5") */
+  /** Label shown in the centre (e.g. "+5" or "3 mins") */
   label: string;
   size?: number;
-  strokeWidth?: number;
   /** Whether the pulsing animation is active (1 cycle every 5 seconds) */
   spinning?: boolean;
+  /**
+   * When provided, draws a segmented arc instead of 12 uniform dots.
+   * Each segment represents 1 minute; segments are evenly spaced around
+   * the ring.  Capped at 60 so the ring never looks overwhelmed.
+   */
+  segments?: number;
 }
 
 /**
- * Dot spinner with stationary dots: each dot pulses its opacity sequentially
- * (1 full cycle every 5 seconds) to simulate circular motion without rotating the container.
+ * Dot spinner with two modes:
+ *
+ * 1. **Default (no `segments`)** — 12 evenly-spaced dots that pulse their
+ *    opacity sequentially to simulate clockwise rotation.
+ *
+ * 2. **Segmented (`segments > 0`)** — one arc-dot per minute (capped at 60),
+ *    still animating when `spinning` is true.  The number of segments comes
+ *    from `elapsed_sim_minutes` in the `calculated_values` Flink topic.
  */
 export const ProgressRing: React.FC<ProgressRingProps> = ({
   label,
   size = 80,
   spinning = true,
+  segments,
 }) => {
-  const numDots = 12;
   const cx = size / 2;
   const cy = size / 2;
   const ringRadius = size * 0.37;
-  const dotRadius = size * 0.052;
   const cycleSeconds = 5;
 
+  // Determine dot count: use segments (capped at 60) or default 12.
+  const numDots = segments != null && segments > 0
+    ? Math.min(segments, 60)
+    : 12;
+
+  // Minimum dot radius so dots stay visible even with many segments.
+  const dotRadius = numDots <= 12
+    ? size * 0.052
+    : Math.max(size * 0.025, size * 0.62 / numDots);
+
   const dots = Array.from({ length: numDots }, (_, i) => {
-    // Clockwise angles: 0 (12 o'clock), 30 (1 o'clock), 60 (2 o'clock)... 330 (11 o'clock)
+    // Clockwise: 0 = 12 o'clock
     const angle = (i * 360) / numDots;
     const rad = (angle * Math.PI) / 180;
     const x = cx + ringRadius * Math.sin(rad);
     const y = cy - ringRadius * Math.cos(rad);
-    // Staggered delay for reverse motion direction
+    // Stagger delay so the "lit" dot travels clockwise
     const delay = -((((numDots - i) % numDots) * cycleSeconds) / numDots);
     return { x, y, delay, key: i };
   });
@@ -54,7 +72,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
             r={dotRadius}
             fill="#2850B8"
             style={{
-              opacity: spinning ? undefined : 0.1,
+              opacity: spinning ? undefined : 0.15,
               animation: spinning ? `dotClockwiseFade ${cycleSeconds}s linear infinite` : 'none',
               animationDelay: spinning ? `${delay.toFixed(3)}s` : undefined,
             }}
@@ -65,8 +83,9 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
       <div
         className="absolute inset-0 flex items-center justify-center font-bold text-[#031040] pointer-events-none"
         style={{
-          fontSize: `${Math.round(size * 0.22)}px`,
+          fontSize: `${Math.round(size * 0.19)}px`,
           fontFamily: 'IBM Plex Sans, sans-serif',
+          lineHeight: 1,
         }}
       >
         {label}

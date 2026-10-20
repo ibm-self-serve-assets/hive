@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Optional, Callable
+from typing import Optional, Callable, Awaitable
 
 from backend.models import EventEnvelope
 from backend.store import DashboardStore
@@ -115,4 +115,105 @@ class EventConsumerManager:
                 break
             except Exception as e:
                 logger.error(f"Kafka consumer error: {e}")
+                await asyncio.sleep(0.5)
+
+
+class CalculatedValuesConsumer:
+    """
+    Consumes records from the `calculated_values` topic (written by the attendee's Flink SQL)
+    and updates `store.job_durations` with the latest elapsed_sim_minutes per subject.
+
+    The topic uses json-registry format; the value is a flat JSON object with the columns
+    defined in 01_create_sink.sql.  We only need `subject` and `elapsed_sim_minutes`.
+    """
+
+    def __init__(
+        self,
+        store: DashboardStore,
+        bootstrap_servers: Optional[str] = None,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
+        topic: str = "calculated_values",
+        on_change: Optional[Callable[[], Awaitable[None]]] = None,
+    ):
+        self.store = store
+        self.bootstrap_servers = bootstrap_servers
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.topic = topic
+        self.on_change = on_change
+
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._kafka_consumer = None
+
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._run())
+        logger.info("CalculatedValues consumer started.")
+
+    def stop(self) -> None:
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        if self._kafka_consumer:
+            try:
+                self._kafka_consumer.close()
+            except Exception:
+                pass
+            self._kafka_consumer = None
+        logger.info("CalculatedValues consumer stopped.")
+
+    async def _run(self) -> None:
+        if not (KAFKA_AVAILABLE and self.bootstrap_servers and self.api_key and self.api_secret):
+            logger.info("CalculatedValues consumer not started: missing credentials.")
+            return
+
+        group_id = f"hive-cv-{uuid.uuid4().hex[:8]}"
+        logger.info(f"CalculatedValues consumer group: {group_id}, topic: {self.topic}")
+
+        conf = {
+            "bootstrap.servers": self.bootstrap_servers,
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanisms": "PLAIN",
+            "sasl.username": self.api_key,
+            "sasl.password": self.api_secret,
+            "group.id": group_id,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": True,
+        }
+        self._kafka_consumer = ConfluentConsumer(conf)
+        self._kafka_consumer.subscribe([self.topic])
+
+        while self._running:
+            try:
+                msg = await asyncio.to_thread(self._kafka_consumer.poll, 0.5)
+                if msg is None:
+                    continue
+                if msg.error():
+                    logger.debug(f"CalculatedValues Kafka error: {msg.error()}")
+                    continue
+
+                try:
+                    raw_val = msg.value()
+                    if raw_val is None:
+                        continue
+                    data = json.loads(raw_val.decode("utf-8"))
+                    subject = data.get("subject")
+                    elapsed = data.get("elapsed_sim_minutes")
+                    if subject and elapsed is not None:
+                        changed = self.store.ingest_calculated_value(str(subject), int(elapsed))
+                        if changed and self.on_change:
+                            await self.on_change()
+                except Exception as parse_err:
+                    logger.debug(f"Skipping malformed calculated_values record: {parse_err}")
+                    continue
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"CalculatedValues consumer error: {e}")
                 await asyncio.sleep(0.5)

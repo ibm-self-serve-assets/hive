@@ -25,6 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isStopped = lifecycle_status === 'stopped';
   const hasFactory = Boolean(active_factory_id);
   const hasState = stream_health !== 'awaiting_events' || hasFactory;
+  const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
+  const isUnlocked = level.isUnlocked ? level.isUnlocked(state) : true;
 
   return (
     <aside
@@ -33,97 +35,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       <div className="p-5 space-y-5">
 
-        {/* ── Connection status pill ── */}
-        <div className="inline-flex items-center gap-1.5 bg-[#2850B8] text-white text-xs font-semibold px-4 py-1.5 rounded-full">
-          {isLive ? (
-            <img src="/icons/simulation_status_connected.png" width={10} height={10} alt="live" />
-          ) : (
-            <span
-              className={`w-2 h-2 rounded-full ${
-                stream_health === 'stale' ? 'bg-amber-400' : hasFactory ? 'bg-emerald-400' : 'bg-[#4A5A8A]'
-              }`}
-            />
-          )}
-          <span className="text-[11px]">
-            {isLive ? 'connected' : stream_health === 'stale' ? 'stale' : hasFactory ? 'connected' : 'connecting'}
-          </span>
-        </div>
-
-        {/* ── Simulation controls ── */}
-        <section>
-          <h2 className="text-xs font-bold text-white mb-3">Simulation controls</h2>
-
-          {isExpired && (
-            <div className="mb-3 px-3 py-2 rounded text-xs text-amber-300 border border-amber-800 bg-[#2a1800] leading-snug">
-              Simulation complete. Start a new run below.
-            </div>
-          )}
-
-          {isExpired ? (
-            <button
-              onClick={() => onSendCommand('restart', { start: true })}
-              disabled={isCommandPending}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              <img src="/icons/simulation_controls_run.png" width={14} height={14} alt="Restart" />
-              <span>{isCommandPending ? 'Starting…' : 'Restart'}</span>
-            </button>
-          ) : isStopped ? (
-            <button
-              onClick={() => onSendCommand('restart', { start: true })}
-              disabled={isCommandPending}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              <img src="/icons/simulation_controls_run.png" width={14} height={14} alt="Restart" />
-              <span>{isCommandPending ? 'Starting…' : 'Restart'}</span>
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={() => onSendCommand(running ? 'stop' : 'start')}
-                disabled={isCommandPending || !hasFactory}
-                className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                {running ? (
-                  <>
-                    <img src="/icons/simulation_controls_pause.png" width={14} height={14} alt="Stop" />
-                    <span>Stop</span>
-                  </>
-                ) : (
-                  <>
-                    <img src="/icons/simulation_controls_run.png" width={14} height={14} alt="Run" />
-                    <span>Run</span>
-                  </>
-                )}
-              </button>
-              {running && (
-                <button
-                  onClick={() => onSendCommand('pause')}
-                  disabled={isCommandPending}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#1A3080] hover:bg-[#243D96] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  <img src="/icons/simulation_controls_pause.png" width={14} height={14} alt="Pause" />
-                  <span>Pause</span>
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* ── Sim time ── */}
-        <section>
-          <div className="flex items-center gap-2 text-[#8AA0D0] text-xs mb-1">
-            <img src="/icons/clock.png" width={16} height={16} alt="clock" className="opacity-70" />
-            <span>Sim time</span>
-          </div>
-          <div className="font-bold font-mono text-white text-xl tabular-nums tracking-tight">
-            {hasState ? fmtSimTime(sim_time_minutes) : '--'}
-          </div>
-        </section>
-
         {/* ── Level selector ── */}
         <section>
-          <label htmlFor="level-select" className="block text-sm font-bold text-[#8AA0D0] mb-2">
+          <label htmlFor="level-select" className="block text-xs font-bold text-white mb-3">
             Levels
           </label>
           <select
@@ -139,6 +53,98 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ))}
           </select>
         </section>
+
+        <hr className="border-t border-[#1A2760]" />
+
+        {/* ── Simulation controls ── */}
+        <section>
+          <h2 className="text-xs font-bold text-white mb-3">Simulation controls</h2>
+
+          {/* Connection status */}
+          <div className="flex items-center gap-2 text-white text-sm mb-3">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                stream_health === 'stale' ? 'bg-amber-400' : isLive || hasFactory ? 'bg-emerald-400' : 'bg-[#4A5A8A]'
+              }`}
+            />
+            <span>
+              {isLive ? 'Connected' : stream_health === 'stale' ? 'Stale' : hasFactory ? 'Connected' : 'Connecting'}
+            </span>
+          </div>
+
+          {isUnlocked && (
+            <>
+            {isExpired && (
+              <div className="mb-3 px-3 py-2 rounded text-xs text-amber-300 border border-amber-800 bg-[#2a1800] leading-snug">
+                Simulation complete. Start a new run below.
+              </div>
+            )}
+
+            {isExpired ? (
+              <button
+                onClick={() => onSendCommand('restart', { start: true })}
+                disabled={isCommandPending}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <img src="/icons/svg/simulation_controls_run.svg" width={14} height={14} alt="Restart" />
+                <span>{isCommandPending ? 'Starting…' : 'Restart'}</span>
+              </button>
+            ) : isStopped ? (
+              <button
+                onClick={() => onSendCommand('restart', { start: true })}
+                disabled={isCommandPending}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <img src="/icons/svg/simulation_controls_run.svg" width={14} height={14} alt="Restart" />
+                <span>{isCommandPending ? 'Starting…' : 'Restart'}</span>
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onSendCommand(running ? 'stop' : 'start')}
+                  disabled={isCommandPending || !hasFactory}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {running ? (
+                    <>
+                      <img src="/icons/svg/simulation_controls_pause.svg" width={14} height={14} alt="Stop" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <img src="/icons/svg/simulation_controls_run.svg" width={14} height={14} alt="Run" />
+                      <span>Run</span>
+                    </>
+                  )}
+                </button>
+                {running && (
+                  <button
+                    onClick={() => onSendCommand('pause')}
+                    disabled={isCommandPending}
+                    className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#1A3080] hover:bg-[#243D96] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    <img src="/icons/svg/simulation_controls_pause.svg" width={14} height={14} alt="Pause" />
+                    <span>Pause</span>
+                  </button>
+                )}
+              </div>
+            )}
+            </>
+          )}
+        </section>
+
+        {/* ── Simulation time (hidden while the level's requirements are shown) ── */}
+        {isUnlocked && (
+          <section>
+            <div className="flex items-center gap-2 text-[#8AA0D0] text-xs mb-1">
+              <img src="/icons/svg/clock.svg" width={16} height={16} alt="clock" className="opacity-70" />
+              <span>Simulation Time</span>
+            </div>
+            <div className="font-bold font-mono text-white text-xl tabular-nums tracking-tight">
+              {hasState ? fmtSimTime(sim_time_minutes) : '--'}
+            </div>
+          </section>
+        )}
 
       </div>
 

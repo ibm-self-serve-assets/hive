@@ -3,7 +3,7 @@
 -- =============================================================================
 --
 -- WHAT THIS DOES
---   Creates the `job_durations` table. Flink will fill it in Step 2 with one row
+--   Creates the `calculated_values` table. Flink will fill it in Step 2 with one row
 --   per finished job: how long it took between its "started" and "completed"
 --   events.
 --
@@ -13,7 +13,7 @@
 --   * Paste this file into a workspace cell and click Run.
 --
 -- NOTES
---   * Flink creates the backing Kafka topic `job_durations` for you. Do not
+--   * Flink creates the backing Kafka topic `calculated_values` for you. Do not
 --     create that topic yourself (for example with provision_topics.py).
 --   * 'json-registry' stores the table's schema in Schema Registry. Schema
 --     Registry must be enabled for the environment, and Tableflow needs the
@@ -23,7 +23,7 @@
 --     materialization and it cannot be changed later, so pick it up front.
 -- =============================================================================
 
-CREATE TABLE `job_durations` (
+CREATE TABLE `calculated_values` (
   `job_id`              STRING,           -- shared by the started and completed event
   `factory_id`          STRING,
   `run_id`              STRING,

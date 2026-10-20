@@ -172,7 +172,7 @@ interface EventPanelProps {
 }
 
 export const EventPanel: React.FC<EventPanelProps> = ({ title, events }) => {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<HiveEvent | null>(null);
 
   return (

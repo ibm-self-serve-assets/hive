@@ -8,7 +8,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
   - `level-0-hive-dashboard/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, factory controls, auto-connection.
   - `level-1-connect-simulation/`: Topic provisioning, raw event connectivity, and foundational simulation controls.
   - `level-2-implement-flink/`: Confluent Flink interval joins, job durations correlation (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`).
-  - `level-3-hive-dashboard/`: Real-time inventory reconciliation, material ledgers, Flink balances, and Tableflow sync.
+  - `backup_ui/`: Archived Level 3 prototype (real-time inventory reconciliation, material ledgers, Flink balances, Tableflow sync). Reference only — superseded by `level-0-hive-dashboard/`.
 - **Simulation Server**: In `simulation-instructor-only/` (memory-only, instructor-managed authority).
 
 ## Working agreements
@@ -17,7 +17,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
   - `simulation-instructor-only/` specifications and README
   - `level-1-connect-simulation/` README and provisioning scripts
   - `level-2-implement-flink/` README and SQL comments
-  - `level-3-hive-dashboard/` README and guides
+  - `backup_ui/` (archived — no active maintenance required)
   - `level-0-hive-dashboard/` (single unified frontend and backend)
 - **Audience.**
   - **Simulation server (`simulation-instructor-only`) is written for instructors.** It describes hidden state, server internals, and the answer key.
@@ -39,8 +39,8 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 | `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). 13 tests pass; `tests/test_api.py` fails at import (`ModuleNotFoundError: No module named 'topics'`), not yet investigated. |
 | `level-0-hive-dashboard/` | **Unified UI installed**. Backend and frontend running in unified structure with Level 1-3 support. |
 | `level-1-connect-simulation/` | **Verified working**. Provisioning scripts, raw event streams, and real-time dashboard controls functional. |
-| `level-2-implement-flink/` | **Verified deployed** in Confluent Cloud. Tables, jobs, and validation passing (`job_durations` stream join). |
-| `level-3-hive-dashboard/` | Next active phase: Ledgers, balances, Tableflow sync, and level validation tests. |
+| `level-2-implement-flink/` | **Verified deployed** in Confluent Cloud. Tables, jobs, and validation passing (`calculated_values` stream join). |
+| `backup_ui/` | Archived Level 3 prototype. Superseded by `level-0-hive-dashboard/`. |
 
 ## Simulation scheduling: cart / staging logic (done)
 
@@ -58,7 +58,7 @@ Implemented in `simulation-instructor-only/server/simulation.py` (`SimulationRun
 
 Each workshop level gets its own dashboard UI, and each level's UI improves on the previous one. Adding Level N must never break Levels 1 to N-1.
 
-**Done:** the Levels dropdown is in the sidebar of `level-0-hive-dashboard/frontend` and lists only Level 1. Level 1 is the current UI (Resources gathered, Parts manufactured, Robots assembled, with event panels).
+**Done:** the Levels dropdown is in the sidebar of `level-0-hive-dashboard/frontend` and lists Level 1 and Level 2. The sidebar order is: Levels, a divider, then Simulation controls (a plain green dot with "Connected", then the buttons) and Simulation Time. Level 2 is currently an unchanged copy of Level 1 (`levels/level2/Level2Screen.tsx`), the starting point for its improvements. Level 1 is the current UI (Resources gathered, Parts manufactured, Robots assembled, with event panels).
 
 ### Architecture decision: a full screen per level
 
@@ -74,7 +74,7 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 - `levels/types.ts`: `LevelScreenProps` (the contract every screen receives, currently `state: DashboardState`) and `LevelDefinition` (`id`, `label`, `Screen`).
 - `levels/registry.ts`: the `LEVELS` list. The dropdown is built from it and `DEFAULT_LEVEL_ID` is its first entry.
 - `levels/level1/Level1Screen.tsx`: Level 1's screen.
-- `App.tsx` holds the selected `levelId` and renders the matching `Screen`. `components/Sidebar.tsx` renders the dropdown from `LEVELS`.
+- `App.tsx` holds the selected `levelId` and renders the matching `Screen`, or the level's `Requirements` while the level is locked. `components/Sidebar.tsx` renders the dropdown from `LEVELS` and hides the simulation buttons and Simulation Time while the level is locked.
 
 ### To add a level
 
@@ -88,16 +88,21 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 
 - [x] Levels dropdown with Level 1 only; Level 1 uses the current UI.
 - [x] Screen-per-level framework (`levels/types.ts`, `levels/registry.ts`, `levels/level1/`).
-- [ ] Decide what each of Levels 2 and 3 adds to the UI (for example Level 2: job durations from the Flink `job_durations` stream; Level 3: ledger and balances) and build `levels/level2/` and `levels/level3/`.
-- [ ] Fold `level-3-hive-dashboard/frontend`'s own `ManufacturingFloor.tsx` into `levels/level3/`, so there is one frontend.
-- [ ] Gate each dropdown entry on the validation hook (roadmap item 4), for example disable it or warn until the attendee's previous level works.
-- [ ] Persist the selected level (for example `localStorage`) so a reload keeps it.
-- [ ] Level 2: bring back the dotted flow line between the lanes (`components/FlowDots.tsx` is kept, but Level 1 no longer uses it). Tie it to the Flink-derived data, for example job durations.
+- [x] Level 2 added to the dropdown as a copy of Level 1.
+- [x] Decide what each of Levels 2 and 3 adds to the UI (Level 2: job durations + blocked state + input chips from the Flink `calculated_values` stream; Level 3: ledger and balances). `levels/level2/` built.
+- [ ] Fold `backup_ui/frontend`'s own `ManufacturingFloor.tsx` into `levels/level3/`, so there is one frontend.
+- [x] Level 2 gate: while the `calculated_values` topic does not exist, the main area of Level 2 shows a centred lock message (`levels/level2/Level2Requirements.tsx`, icon `public/icons/svg/lock.svg`) instead of the Level 2 screen, and the sidebar hides the simulation buttons and Simulation Time. Only the Levels dropdown and the connection status remain. A level opts in via optional `isUnlocked` and `Requirements` on its `LevelDefinition`. The backend (`backend/topic_watch.py`, `CalculatedValuesWatcher`) polls Confluent for the existence of the `calculated_values` topic and sets `calculated_values_ready` in the dashboard snapshot. It stays set once true. It only lists topics; it never reads records, and the topic is empty until the simulation runs.
+- [ ] Gate Level 3 the same way (needs its own topic or signal), and add the matching validation tests (roadmap item 4).
+- [x] Persist the selected level: URL hash routing (`#level-1`, `#level-2`). A page refresh restores the level; browser back/forward buttons work. `localStorage` fallback not needed.
+- [x] Level 2: dotted flow line (`components/FlowDots.tsx`) wired between the three lanes, animated when `state.running` is true.
+- [x] Level 1 + Level 2: event panels start **collapsed** by default. The count badge in the header always shows the running total, so attendees see activity without the panels obscuring the main content. Click to expand.
+
+- [ ] `calculated_values` is the single Flink output topic for all derived values (job durations first, more later). Its table is still shaped for job durations only (`01_create_sink.sql`). Before adding a second kind of value, decide on a shared shape, for example a `metric` column plus per-metric columns, and keep changelog mode `append`. Tableflow cannot change the mode later.
 
 ## Simulation notes: assembly and `duration_ms`
 
 - `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `factory.state`, so it now requires 6 stations.
-- `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `job_durations` join does).
+- `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `calculated_values` join does).
 - Restart the simulation and the dashboard backend to pick these changes up.
 - To check: the Level 3 backend and frontend with a sixth station.
 

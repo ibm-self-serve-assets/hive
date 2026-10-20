@@ -13,4 +13,11 @@ export interface LevelDefinition {
   label: string;
   /** The level's main screen; owns the whole content area. */
   Screen: React.FC<LevelScreenProps>;
+  /**
+   * Optional gate. While `isUnlocked(state)` is false the main area shows `Requirements`
+   * instead of `Screen`, and the sidebar hides the simulation controls and time.
+   * Omit for ungated levels.
+   */
+  isUnlocked?: (state: DashboardState) => boolean;
+  Requirements?: React.FC;
 }
