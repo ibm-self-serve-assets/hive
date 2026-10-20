@@ -7,7 +7,6 @@ class StationJobState(BaseModel):
     output_id: str
     started_at_sim_ms: int
     completes_at_sim_ms: int
-    duration_ms: int
     consumed_inputs: Dict[str, int]
     progress_percent: float
 

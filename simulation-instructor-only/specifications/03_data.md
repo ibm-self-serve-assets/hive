@@ -22,7 +22,9 @@ Manufacturing station recipes, outputs and durations, and the robot assembly rec
 
 Robots are identified by type, like parts; there is no per-robot UUID or display label. Completed robots are counted.
 
-`forager_assembly` is a placeholder. It carries the same recipe and duration as `worker_assembly` for now and is declared in `simulation_rules.json`, but the simulation does not schedule it, emit forager events or include it in snapshots until a later specification enables it and sets its real recipe.
+`worker_assembly` (engineer) and `forager_assembly` (forager) are both defined in the `assembly` list in `simulation_rules.json`, scheduled, and included in snapshots and events. The forager carries the same recipe and duration as the engineer for now.
+
+Durations are internal: no event or snapshot carries `duration_ms`.
 
 ## Execution rules
 

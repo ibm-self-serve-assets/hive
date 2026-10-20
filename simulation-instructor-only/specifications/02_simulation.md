@@ -2,7 +2,7 @@
 
 ## What the factory does
 
-Build a server-side simulation of a small robotic-bee factory. Scheduled deliveries replenish five resources. Four independent stations consume those resources to make parts. A fifth station consumes parts to assemble engineer robots. Work starts automatically whenever a station is idle and its full recipe is available. A forager assembly station is reserved as a placeholder (see Robot assembly).
+Build a server-side simulation of a small robotic-bee factory. Scheduled deliveries replenish five resources. Four independent stations consume those resources to make parts. Two assembly stations consume parts to assemble engineer and forager robots. Work starts automatically whenever a station is idle and its full recipe is available.
 
 The simulation owns the factory. Kafka carries observations of what has happened, and the UI displays those observations. The complete observation path is:
 
@@ -40,11 +40,13 @@ Jobs do not compete for factory workers or shared machine capacity in this versi
 
 ### Robot assembly
 
-`worker_assembly` is another automatic station with one active slot. It builds the `engineer` robot. It works like a manufacturing station: it incrementally moves finished parts into its assembly cart and starts only when the cart holds the full recipe in `simulation_rules.json`. The cart is consumed at job start. When the job duration elapses, add one engineer to completed inventory.
+The `assembly` list in `simulation_rules.json` defines the assembly stations: `worker_assembly` builds the `engineer` robot and `forager_assembly` builds the `forager` robot. Each is an automatic station with one active slot and works like a manufacturing station: it incrementally moves finished parts into its own assembly cart and starts only when the cart holds the full recipe. The cart is consumed at job start. When the job duration elapses, add one robot of that type to completed inventory. The two stations compete for the same finished parts; the one with the fewest completed robots is served first.
 
 Robots are identified by type (`robot_id`: `engineer` or `forager`), the same way parts are identified by `part_id`. There is no per-robot UUID or display label such as W-001; completed robots are counted. Completed robots remain in inventory. Shipping, commissioning, colony registration and task allocation are later features.
 
-**Forager placeholder:** `forager_assembly` will build the `forager` robot. It is defined in `simulation_rules.json` with the same recipe and duration as `worker_assembly`, and `robot_id` accepts `forager` in the schemas. The simulation does not create or schedule this station yet: no forager events are emitted and snapshots still list five stations. A later specification will enable it and set its real recipe.
+The forager currently uses the same provisional recipe and duration as the engineer. Snapshots list six stations.
+
+Job durations are internal to the simulation. Events and `factory.state` snapshots never include a `duration_ms` field; attendees derive elapsed time from the `sim_time_minutes` of a job's `started` and `completed` events.
 
 ## Scheduling order
 

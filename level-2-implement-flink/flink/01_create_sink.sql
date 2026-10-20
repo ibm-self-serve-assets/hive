@@ -34,7 +34,6 @@ CREATE TABLE `job_durations` (
   `output_id`           STRING,           -- what the job produced
   `started_at`          TIMESTAMP(3),     -- wall-clock time of the started event (UTC)
   `completed_at`        TIMESTAMP(3),     -- wall-clock time of the completed event (UTC)
-  `planned_duration_ms` BIGINT,           -- duration_ms announced by the started event
   `elapsed_sim_minutes` BIGINT,           -- simulated time between the two events in minutes (exact; 1 real second = 1 sim minute)
   `elapsed_wall_s`      BIGINT            -- real seconds between the two events
 ) DISTRIBUTED BY (`job_id`) INTO 1 BUCKETS

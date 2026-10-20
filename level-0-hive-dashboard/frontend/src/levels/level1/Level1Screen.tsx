@@ -1,6 +1,7 @@
 import React from 'react';
-import { DashboardState } from '../types';
-import { FlowDots } from './FlowDots';
+import { FlowDots } from '../../components/FlowDots';
+import { EventPanel } from '../../components/EventPanel';
+import type { LevelScreenProps } from '../types';
 
 // ── Resource gathering ────────────────────────────────────────────────────────
 const RESOURCES: { id: string; label: string; icon: string }[] = [
@@ -25,16 +26,13 @@ const ROBOTS: { id: string; label: string; icon: string }[] = [
   { id: 'forager',  label: 'Forager',  icon: '/icons/harvester.png' },
 ];
 
-interface Props {
-  state: DashboardState;
-}
-
-export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
+export const Level1Screen: React.FC<LevelScreenProps> = ({ state }) => {
   const {
     running,
     gathering_completed,
     manufacturing_completed,
     assembly_completed,
+    events,
   } = state;
 
   return (
@@ -47,7 +45,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="text-[#2850B8] font-bold text-base mb-4">Resource gathering</h2>
+            <h2 className="text-[#2850B8] font-bold text-base mb-4">Resources gathered</h2>
             <div className="grid grid-cols-2 gap-3">
               {RESOURCES.map(({ id, label, icon }) => {
                 const count = gathering_completed[id] ?? 0;
@@ -68,6 +66,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
               })}
             </div>
           </div>
+          <EventPanel title="Resource events" events={events?.gathering ?? []} />
         </section>
 
         <FlowDots running={running} />
@@ -78,7 +77,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="text-[#2850B8] font-bold text-base mb-4">Parts manufacturing</h2>
+            <h2 className="text-[#2850B8] font-bold text-base mb-4">Parts manufactured</h2>
             <div className="flex flex-col gap-3">
               {STATIONS.map(({ id, label, icon }) => {
                 const count = manufacturing_completed[id] ?? 0;
@@ -99,6 +98,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
               })}
             </div>
           </div>
+          <EventPanel title="Manufacturing events" events={events?.manufacturing ?? []} />
         </section>
 
         <FlowDots running={running} />
@@ -109,7 +109,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="font-bold text-base text-[#031040] mb-4">Robot assembly</h2>
+            <h2 className="font-bold text-base text-[#031040] mb-4">Robots assembled</h2>
             <div className="flex flex-col gap-3">
               {ROBOTS.map(({ id, label, icon }) => {
                 const count = assembly_completed[id] ?? 0;
@@ -130,6 +130,7 @@ export const ManufacturingFloor: React.FC<Props> = ({ state }) => {
               })}
             </div>
           </div>
+          <EventPanel title="Assembly events" events={events?.assembly ?? []} />
         </section>
 
       </div>

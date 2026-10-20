@@ -40,7 +40,7 @@
 --
 -- Event fields used (see spec-shared/schemas/event_payloads.json):
 --   envelope : factory_id, run_id, occurred_at, sim_time_minutes
---   payload  : job_id, duration_ms, resource_id / station_id / output_id
+--   payload  : job_id, resource_id / station_id / output_id
 -- =============================================================================
 
 EXECUTE STATEMENT SET
@@ -56,7 +56,6 @@ SELECT
   s.subject, s.output_id,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
-  s.planned_duration_ms,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
   TIMESTAMPDIFF(SECOND, s.occurred_at, c.occurred_at) AS elapsed_wall_s
 FROM (
@@ -66,7 +65,6 @@ FROM (
     JSON_VALUE(CAST(`val` AS STRING), '$.run_id')                                      AS run_id,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.resource_id')                         AS subject,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.resource_id')                         AS output_id,
-    CAST(JSON_VALUE(CAST(`val` AS STRING), '$.payload.duration_ms') AS BIGINT)        AS planned_duration_ms,
     CAST(JSON_VALUE(CAST(`val` AS STRING), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(CAST(`val` AS STRING), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time
@@ -93,7 +91,6 @@ SELECT
   s.subject, s.output_id,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
-  s.planned_duration_ms,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
   TIMESTAMPDIFF(SECOND, s.occurred_at, c.occurred_at) AS elapsed_wall_s
 FROM (
@@ -103,7 +100,6 @@ FROM (
     JSON_VALUE(CAST(`val` AS STRING), '$.run_id')                                      AS run_id,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.station_id')                          AS subject,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.output_id')                           AS output_id,
-    CAST(JSON_VALUE(CAST(`val` AS STRING), '$.payload.duration_ms') AS BIGINT)        AS planned_duration_ms,
     CAST(JSON_VALUE(CAST(`val` AS STRING), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(CAST(`val` AS STRING), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time
@@ -130,7 +126,6 @@ SELECT
   s.subject, s.output_id,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
-  s.planned_duration_ms,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
   TIMESTAMPDIFF(SECOND, s.occurred_at, c.occurred_at) AS elapsed_wall_s
 FROM (
@@ -140,7 +135,6 @@ FROM (
     JSON_VALUE(CAST(`val` AS STRING), '$.run_id')                                      AS run_id,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.station_id')                          AS subject,
     JSON_VALUE(CAST(`val` AS STRING), '$.payload.output_id')                           AS output_id,
-    CAST(JSON_VALUE(CAST(`val` AS STRING), '$.payload.duration_ms') AS BIGINT)        AS planned_duration_ms,
     CAST(JSON_VALUE(CAST(`val` AS STRING), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(CAST(`val` AS STRING), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time

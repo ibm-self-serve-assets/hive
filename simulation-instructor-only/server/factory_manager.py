@@ -297,7 +297,7 @@ class FactoryManager:
                 # consumers replaying from earliest always see it.
                 rules = get_simulation_rules()
                 station_recipes = {m.station_id: dict(m.inputs) for m in rules.manufacturing}
-                station_recipes[rules.worker_assembly.station_id] = dict(rules.worker_assembly.inputs)
+                station_recipes.update({a.station_id: dict(a.inputs) for a in rules.assembly})
                 init_payload = FactoryInitializedPayload(
                     operation_id=operation_id,
                     attendee_id=factory.owner_attendee_id,

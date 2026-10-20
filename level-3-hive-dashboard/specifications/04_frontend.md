@@ -18,7 +18,7 @@ The main area has three columns:
 | --- | --- |
 | Resources | Available resin, silicon, metals, copper and energy |
 | Parts manufacturing | Four station rows with progress/status; parts inventory directly below |
-| Robot assembly | One engineer assembly row (`worker_assembly`); completed engineer inventory below. The forager assembly station is a placeholder and is not shown yet |
+| Robot assembly | Engineer (`worker_assembly`) and forager (`forager_assembly`) assembly rows; completed robot inventory by type below |
 
 Put the event log across the bottom with time, event and details. Keep icons compact and mechanical. Do not duplicate the parts counts under robot assembly. Omit the comp's unused empty strip above the log.
 

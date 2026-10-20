@@ -1,11 +1,14 @@
 import React from 'react';
 import { DashboardState, fmtSimTime } from '../types';
+import { LEVELS } from '../levels/registry';
 
 interface SidebarProps {
   state: DashboardState;
   csrfToken: string;
   isCommandPending: boolean;
   onSendCommand: (command: string, extra?: Record<string, unknown>) => Promise<void>;
+  levelId: string;
+  onLevelChange: (levelId: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -13,6 +16,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   csrfToken: _csrfToken,
   isCommandPending,
   onSendCommand,
+  levelId,
+  onLevelChange,
 }) => {
   const { stream_health, lifecycle_status, running, sim_time_minutes, active_factory_id } = state;
   const isLive = stream_health === 'live';
@@ -114,6 +119,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="font-bold font-mono text-white text-xl tabular-nums tracking-tight">
             {hasState ? fmtSimTime(sim_time_minutes) : '--'}
           </div>
+        </section>
+
+        {/* ── Level selector ── */}
+        <section>
+          <label htmlFor="level-select" className="block text-sm font-bold text-[#8AA0D0] mb-2">
+            Levels
+          </label>
+          <select
+            id="level-select"
+            value={levelId}
+            onChange={(e) => onLevelChange(e.target.value)}
+            className="w-full rounded border border-[#1A2760] bg-[#0A1A55] text-white text-sm font-bold px-3 py-2"
+          >
+            {LEVELS.map(({ id, label }) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
         </section>
 
       </div>

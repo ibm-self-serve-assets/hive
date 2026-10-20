@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
-import { ManufacturingFloor } from './components/ManufacturingFloor';
+import { DEFAULT_LEVEL_ID, LEVELS } from './levels/registry';
 import { DashboardState, EMPTY_STATE } from './types';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
   const [csrfToken, setCsrfToken] = useState('');
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [levelId, setLevelId] = useState(DEFAULT_LEVEL_ID);
+  const { Screen } = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const [isCommandPending, setIsCommandPending] = useState(false);
 
   // Fetch CSRF token and check config on mount
@@ -126,9 +128,11 @@ export const App: React.FC = () => {
           csrfToken={csrfToken}
           isCommandPending={isCommandPending}
           onSendCommand={handleSendCommand}
+          levelId={levelId}
+          onLevelChange={setLevelId}
         />
         <main className="flex-1 min-h-0 overflow-auto">
-          <ManufacturingFloor state={state} />
+          <Screen state={state} />
         </main>
       </div>
     </div>

@@ -36,7 +36,7 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 
 | Item | Status |
 |---|---|
-| `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). 11 tests pass; `tests/test_api.py` fails at import (`ModuleNotFoundError: No module named 'topics'`), not yet investigated. |
+| `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). 13 tests pass; `tests/test_api.py` fails at import (`ModuleNotFoundError: No module named 'topics'`), not yet investigated. |
 | `level-0-hive-dashboard/` | **Unified UI installed**. Backend and frontend running in unified structure with Level 1-3 support. |
 | `level-1-connect-simulation/` | **Verified working**. Provisioning scripts, raw event streams, and real-time dashboard controls functional. |
 | `level-2-implement-flink/` | **Verified deployed** in Confluent Cloud. Tables, jobs, and validation passing (`job_durations` stream join). |
@@ -54,6 +54,52 @@ Implemented in `simulation-instructor-only/server/simulation.py` (`SimulationRun
 - Tests added in `simulation-instructor-only/tests/test_simulation.py`; the resin conservation test counts resin held in carts.
 - Docs updated: `02_simulation.md`, `03_data.md`, `INSTRUCTOR_GUIDE.md`, `simulation-instructor-only/README.md`. The old text described the rotating tie-break cursor from the last commit; the working tree had already replaced it with fewest-completed-first ordering, so the docs now describe that. The unused `SimulationRun.station_cursor` was removed.
 
+## Mission: one UI per level (dashboard architecture)
+
+Each workshop level gets its own dashboard UI, and each level's UI improves on the previous one. Adding Level N must never break Levels 1 to N-1.
+
+**Done:** the Levels dropdown is in the sidebar of `level-0-hive-dashboard/frontend` and lists only Level 1. Level 1 is the current UI (Resources gathered, Parts manufactured, Robots assembled, with event panels).
+
+### Architecture decision: a full screen per level
+
+Two options were considered:
+
+1. **A main screen per level** that contains all of its elements.
+2. **Shared components** (Resource gathering, Parts manufacturing, Robot assembly, ...) that every level reuses.
+
+We chose option 1 as the base. Reason: with shared components, improving a component for Level 3 changes what Level 1 shows, and each fix needs a regression check across levels. With a screen per level, a level is frozen once it ships and a new level starts from a copy of the previous one. The cost is some duplication. To limit it, only truly identical, presentation-only pieces are shared (for example `components/FlowDots.tsx`, `EventPanel.tsx`, `Sidebar.tsx`). If a shared piece needs a level-specific change, copy it into that level's folder instead of adding flags.
+
+### Layout (`level-0-hive-dashboard/frontend/src/`)
+
+- `levels/types.ts`: `LevelScreenProps` (the contract every screen receives, currently `state: DashboardState`) and `LevelDefinition` (`id`, `label`, `Screen`).
+- `levels/registry.ts`: the `LEVELS` list. The dropdown is built from it and `DEFAULT_LEVEL_ID` is its first entry.
+- `levels/level1/Level1Screen.tsx`: Level 1's screen.
+- `App.tsx` holds the selected `levelId` and renders the matching `Screen`. `components/Sidebar.tsx` renders the dropdown from `LEVELS`.
+
+### To add a level
+
+1. Copy the previous level folder, for example `levels/level1/` to `levels/level2/`, and rename the screen.
+2. Change only the new copy.
+3. Append one entry to `LEVELS` in `levels/registry.ts`.
+4. If the level needs data the dashboard does not provide yet, add it to the backend store and `types.ts` as optional fields, so earlier levels are unaffected.
+5. Update the matching level docs (see Working agreements).
+
+### Mission to-do
+
+- [x] Levels dropdown with Level 1 only; Level 1 uses the current UI.
+- [x] Screen-per-level framework (`levels/types.ts`, `levels/registry.ts`, `levels/level1/`).
+- [ ] Decide what each of Levels 2 and 3 adds to the UI (for example Level 2: job durations from the Flink `job_durations` stream; Level 3: ledger and balances) and build `levels/level2/` and `levels/level3/`.
+- [ ] Fold `level-3-hive-dashboard/frontend`'s own `ManufacturingFloor.tsx` into `levels/level3/`, so there is one frontend.
+- [ ] Gate each dropdown entry on the validation hook (roadmap item 4), for example disable it or warn until the attendee's previous level works.
+- [ ] Persist the selected level (for example `localStorage`) so a reload keeps it.
+
+## Simulation notes: assembly and `duration_ms`
+
+- `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `factory.state`, so it now requires 6 stations.
+- `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `job_durations` join does).
+- Restart the simulation and the dashboard backend to pick these changes up.
+- To check: the Level 3 backend and frontend with a sixth station.
+
 ## Sources of truth
 
 Do not copy recipe quantities, delivery intervals or durations into these notes. Look them up in:
@@ -66,7 +112,7 @@ Do not copy recipe quantities, delivery intervals or durations into these notes.
 1. [x] **Unified Dashboard Scaffolding**: Moved backend and frontend to the unified dashboard (now `level-0-hive-dashboard/`).
 2. [x] **Folder Renaming**: Renamed `spec-1/2/3-*` to `level-1/2/3-*`; unified dashboard folder is `level-0-hive-dashboard/`.
 3. [x] **Cart / Staging Logic**: Incremental per-station staging for manufacturing and robot assembly (see above).
-4. [ ] **Level Selector & Validation Hook**: Add a dropdown for attendees to progress through the workshop levels within a single UI (`level-0-hive-dashboard/frontend`), and add automated validation tests that confirm the attendee can run the selected level and warn otherwise (backend validation endpoint for level progress gates).
+4. [ ] **Level Selector & Validation Hook**: The dropdown is done (see Mission above). Still open: automated validation tests that confirm the attendee can run the selected level and warn otherwise (backend validation endpoint for level progress gates).
 5. [ ] **Ledger & Balances Flink SQL (`level-2` / `level-3`)**: Write attendee SQL for material ledgers and stateful balances in Confluent Cloud.
 6. [ ] **Tableflow Runbook**: Iceberg sync and data lakehouse integration instructions.
 7. [ ] **Fix `simulation-instructor-only/tests/test_api.py`**: import error on `topics`.

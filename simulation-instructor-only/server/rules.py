@@ -37,44 +37,30 @@ class ManufacturingConfig(BaseModel):
         return "part"
 
 
-class RobotConfig(BaseModel):
-    name: str
-    interval_sim_minutes: int
+class AssemblyConfig(BaseModel):
+    name: str                    # e.g. "worker_assembly" — used as station_id
+    output_id: str               # robot type, e.g. "engineer"
+    interval_sim_minutes: int    # duration of one assembly cycle in sim-minutes
+    inputs: Dict[str, int]
+
+    @property
+    def station_id(self) -> str:
+        return self.name.lower().replace(" ", "_")
 
     @property
     def duration_ms(self) -> int:
         return self.interval_sim_minutes * 60_000
-
-
-class WorkerAssemblyConfig(BaseModel):
-    name: str
-    inputs: Dict[str, int]
-    robots: List[RobotConfig]
-
-    @property
-    def station_id(self) -> str:
-        return "worker_assembly"
 
     @property
     def output_type(self) -> str:
         return "robot"
 
 
-class ForagerAssemblyConfig(WorkerAssemblyConfig):
-    """Placeholder: declared in the rules but not scheduled by the simulation yet."""
-    placeholder: bool = True
-
-    @property
-    def station_id(self) -> str:
-        return "forager_assembly"
-
-
 class SimulationRules(BaseModel):
     resources: List[ResourceConfig]
     parts: List[str]
     manufacturing: List[ManufacturingConfig]
-    worker_assembly: WorkerAssemblyConfig
-    forager_assembly: Optional[ForagerAssemblyConfig] = None
+    assembly: List[AssemblyConfig]
 
     @property
     def resource_names(self) -> List[str]:
@@ -86,13 +72,19 @@ class SimulationRules(BaseModel):
 
     @property
     def station_order(self) -> List[str]:
-        """Manufacturing station IDs in definition order, followed by worker_assembly."""
-        return [m.station_id for m in self.manufacturing] + [self.worker_assembly.station_id]
+        """Manufacturing station IDs in definition order, followed by assembly station IDs."""
+        return [m.station_id for m in self.manufacturing] + [a.station_id for a in self.assembly]
 
     def get_manufacturing(self, station_id: str) -> Optional[ManufacturingConfig]:
         for m in self.manufacturing:
             if m.station_id == station_id:
                 return m
+        return None
+
+    def get_assembly(self, station_id: str) -> Optional[AssemblyConfig]:
+        for a in self.assembly:
+            if a.station_id == station_id:
+                return a
         return None
 
 

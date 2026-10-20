@@ -3,7 +3,6 @@ export interface StationJob {
   output_id: string;
   started_at_sim_ms: number;
   completes_at_sim_ms: number;
-  duration_ms: number;
   consumed_inputs: Record<string, number>;
   progress_percent: number;
 }

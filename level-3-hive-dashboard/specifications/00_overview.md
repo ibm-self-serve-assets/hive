@@ -52,7 +52,7 @@ The attendee runs the local UI and event consumer. The local consumer maintains 
 - **Three-Column Manufacturing Floor**:
   1. **Resources**: Live stockpiles of resin, silicon, metals, copper, and energy.
   2. **Parts Manufacturing**: Four manufacturing stations (structural molding, electronics assembly, actuator fabrication, battery assembly) with active job progress and parts inventory.
-  3. **Robot Assembly**: Final assembly station (`worker_assembly`) producing engineer robots.
+  3. **Robot Assembly**: Final assembly stations (`worker_assembly`, `forager_assembly`) producing engineer and forager robots.
 - **Controls & Sidebar**: Start, Pause, Stop, Restart at zero, Speed (1x / 5x), and live Kafka connectivity / stream freshness indicators.
 - **Event Log**: Real-time chronological audit trail of observed stream events.
 - **No Direct Cloud State Coupling**: The browser must never communicate directly with cloud credentials or query factory state over HTTP.

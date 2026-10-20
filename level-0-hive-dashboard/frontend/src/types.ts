@@ -1,3 +1,22 @@
+/** A raw event envelope as received from Kafka (kept for the event panels). */
+export interface HiveEvent {
+  event_id: string;
+  event_type: string;
+  factory_id?: string | null;
+  server_epoch?: string | null;
+  run_id?: string | null;
+  run_generation: number;
+  event_sequence: number;
+  state_revision?: number | null;
+  schema_version?: number | null;
+  sim_time_minutes: number;
+  occurred_at?: string | null;
+  causation_id?: string | null;
+  payload: Record<string, unknown>;
+}
+
+export type EventSection = 'gathering' | 'manufacturing' | 'assembly';
+
 /** Shape of the state object sent from the backend SSE stream. */
 export interface DashboardState {
   stream_health: 'live' | 'stale' | 'awaiting_events';
@@ -16,6 +35,9 @@ export interface DashboardState {
   gathering_active: Record<string, boolean>;
   manufacturing_active: Record<string, boolean>;
   assembly_active: Record<string, boolean>;
+
+  // Recent raw events per section, newest first
+  events: Record<EventSection, HiveEvent[]>;
 }
 
 export const EMPTY_STATE: DashboardState = {
@@ -31,6 +53,7 @@ export const EMPTY_STATE: DashboardState = {
   gathering_active: {},
   manufacturing_active: {},
   assembly_active: {},
+  events: { gathering: [], manufacturing: [], assembly: [] },
 };
 
 /**

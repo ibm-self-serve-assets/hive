@@ -15,12 +15,11 @@
   "topics": {
     "gathering.started": {
       "type": "object",
-      "required": ["job_id", "resource_id", "quantity", "duration_ms"],
+      "required": ["job_id", "resource_id", "quantity"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "resource_id": { "type": "string", "enum": ["resin", "silicon", "metals", "copper", "energy"] },
-        "quantity": { "type": "integer", "minimum": 1 },
-        "duration_ms": { "type": "integer", "minimum": 1 }
+        "quantity": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },
@@ -45,7 +44,7 @@
     },
     "manufacturing.started": {
       "type": "object",
-      "required": ["job_id", "station_id", "output_id", "inputs", "duration_ms"],
+      "required": ["job_id", "station_id", "output_id", "inputs"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "station_id": {
@@ -64,8 +63,7 @@
         "inputs": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 1 }
-        },
-        "duration_ms": { "type": "integer", "minimum": 1 }
+        }
       },
       "additionalProperties": false
     },
@@ -113,7 +111,7 @@
     },
     "assembly.started": {
       "type": "object",
-      "required": ["job_id", "station_id", "output_id", "inputs", "duration_ms"],
+      "required": ["job_id", "station_id", "output_id", "inputs"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "station_id": {
@@ -127,8 +125,7 @@
         "inputs": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 1 }
-        },
-        "duration_ms": { "type": "integer", "minimum": 1 }
+        }
       },
       "additionalProperties": false
     },
@@ -243,8 +240,8 @@
         },
         "stations": {
           "type": "array",
-          "minItems": 5,
-          "maxItems": 5,
+          "minItems": 6,
+          "maxItems": 6,
           "items": {
             "type": "object",
             "required": ["station_id", "status", "missing_inputs", "job"],
@@ -268,7 +265,6 @@
                       "output_id",
                       "started_at_sim_ms",
                       "completes_at_sim_ms",
-                      "duration_ms",
                       "consumed_inputs",
                       "progress_percent"
                     ],
@@ -277,7 +273,6 @@
                       "output_id": { "type": "string" },
                       "started_at_sim_ms": { "type": "integer", "minimum": 0 },
                       "completes_at_sim_ms": { "type": "integer", "minimum": 0 },
-                      "duration_ms": { "type": "integer", "minimum": 1 },
                       "consumed_inputs": { "type": "object" },
                       "progress_percent": {
                         "type": "number",

@@ -70,13 +70,20 @@ def test_conservation_of_materials():
     # which turns it into chassis. Chassis end up in inventory, in an active
     # assembly job, or in completed robots.
     resin_per_chassis = rules.get_manufacturing("structural_molding").inputs["resin"]
-    chassis_per_robot = rules.worker_assembly.inputs["chassis"]
+    chassis_per_robot = {a.station_id: a.inputs["chassis"] for a in rules.assembly}
     active_chassis_job = 1 if "structural_molding" in sim.active_jobs else 0
-    active_robot_job = 1 if "worker_assembly" in sim.active_jobs else 0
+    active_robot_chassis = sum(
+        chassis_per_robot[st] for st in chassis_per_robot if st in sim.active_jobs
+    )
+    completed_robot_chassis = sum(
+        chassis_per_robot[st] * n for st, n in sim.completed_robots_by_station.items()
+    )
+    staged_chassis = sum(cart.get("chassis", 0) for cart in sim.carts.values())
     total_chassis = (
         sim.parts["chassis"]
-        + active_robot_job * chassis_per_robot
-        + sim.completed_robots_count * chassis_per_robot
+        + staged_chassis
+        + active_robot_chassis
+        + completed_robot_chassis
     )
 
     staged_resin = sum(cart.get("resin", 0) for cart in sim.carts.values())
@@ -142,6 +149,7 @@ def test_assembly_cart_accumulates_parts_incrementally():
     sim.parts.update({"chassis": 1, "electronics": 3, "battery": 2, "actuator": 5})
     sim._run_scheduling_pass(0, "t", gen)
     assert "worker_assembly" not in sim.active_jobs
+    assert "forager_assembly" not in sim.active_jobs
     assert sim.carts["worker_assembly"]["actuator"] == 5
     assert sim.parts["actuator"] == 0
 
@@ -152,29 +160,65 @@ def test_assembly_cart_accumulates_parts_incrementally():
     assert all(v == 0 for v in sim.parts.values())
 
 
-def test_forager_placeholder_is_declared_but_not_scheduled():
+def test_assembly_rules_declare_engineer_and_forager():
     rules = get_simulation_rules()
 
-    # Declared with the same recipe/duration as the engineer station
-    assert rules.forager_assembly is not None
-    assert rules.forager_assembly.station_id == "forager_assembly"
-    assert rules.forager_assembly.inputs == rules.worker_assembly.inputs == {
-        "chassis": 1, "electronics": 3, "battery": 2, "actuator": 8,
-    }
-    assert rules.forager_assembly.robots[0].name == "forager"
-    assert rules.forager_assembly.robots[0].duration_ms == 600000
-
-    # ...but not scheduled: five stations, no forager events
+    assert [(a.station_id, a.output_id) for a in rules.assembly] == [
+        ("worker_assembly", "engineer"), ("forager_assembly", "forager"),
+    ]
+    assert rules.get_assembly("forager_assembly").duration_ms == 600000
     assert rules.station_order == [
         "structural_molding", "electronics_assembly", "actuator_fabrication",
-        "battery_assembly", "worker_assembly",
+        "battery_assembly", "worker_assembly", "forager_assembly",
     ]
-    sim = SimulationRun(
-        factory_id=str(uuid.uuid4()), server_epoch=str(uuid.uuid4()),
-        lifecycle_status="running",
-    )
+    assert len(_new_sim().build_snapshot_payload().stations) == 6
+
+
+def test_forager_cart_accumulates_parts_until_full_then_assembles():
+    sim = _new_sim()
     seq = iter(range(1, 10**6))
-    events = sim.initial_scheduling(event_seq_generator=lambda: next(seq))
-    events += sim.advance_to(600000, event_seq_generator=lambda: next(seq))
-    assert all(ev.payload.get("output_id") != "forager" for _, ev in events)
-    assert len(sim.build_snapshot_payload().stations) == 5
+    gen = lambda: next(seq)
+
+    # Engineer already has a robot built, so the forager (fewest completed) is served first
+    sim.completed_robots_by_station["worker_assembly"] = 1
+    sim.parts.update({"chassis": 1, "electronics": 3, "battery": 2, "actuator": 5})
+    events = sim._run_scheduling_pass(0, "t", gen)
+    assert "forager_assembly" not in sim.active_jobs
+    assert sim.carts["forager_assembly"]["actuator"] == 5
+    assert sim.carts["worker_assembly"] == {}
+    assert sim.parts["actuator"] == 0
+    assert [ev.payload["station_id"] for _, ev in events if ev.event_type == "assembly.blocked"] == [
+        "forager_assembly", "worker_assembly",
+    ]
+
+    sim.parts["actuator"] += 3
+    events = sim._run_scheduling_pass(1, "t", gen)
+    assert "forager_assembly" in sim.active_jobs
+    assert sim.carts["forager_assembly"] == {}
+    started = [ev for _, ev in events if ev.event_type == "assembly.started"]
+    assert [ev.payload["output_id"] for ev in started] == ["forager"]
+
+    # Job completes: forager counted, snapshot reports it as the latest robot
+    job = sim.active_jobs.pop("forager_assembly")
+    events = sim._complete_job(job, job.completes_at_sim_ms, "t", gen)
+    assert events[0][1].payload["output_id"] == "forager"
+    assert sim.completed_robots_by_station["forager_assembly"] == 1
+    assert sim.build_snapshot_payload().completed_robots.last_robot_id == "forager"
+
+
+def test_events_and_snapshot_do_not_include_duration_ms():
+    sim = _new_sim()
+    seq = iter(range(1, 10**6))
+    gen = lambda: next(seq)
+
+    events = sim.initial_scheduling(event_seq_generator=gen)
+    sim.resources.update({"energy": 10, "resin": 10, "copper": 10, "metals": 10, "silicon": 10})
+    sim.parts.update({"chassis": 1, "electronics": 3, "battery": 2, "actuator": 8})
+    events += sim._run_scheduling_pass(0, "t", gen)
+    types = {ev.event_type for _, ev in events}
+    assert {"gathering.started", "manufacturing.started", "assembly.started"} <= types
+    assert all("duration_ms" not in ev.payload for _, ev in events)
+
+    snap = sim.build_snapshot_payload().model_dump()
+    jobs = [s["job"] for s in snap["stations"] if s["job"]]
+    assert jobs and all("duration_ms" not in j for j in jobs)

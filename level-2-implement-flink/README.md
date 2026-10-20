@@ -5,7 +5,7 @@
 In the Hive workshop, your factory simulation emits discrete lifecycle events across different Kafka topics as resources are collected, components are manufactured, and worker robots are assembled. 
 
 However, raw events only tell you what happened at an instant in time:
-- A `*.started` event announces that a job began with a planned duration.
+- A `*.started` event announces that a job began.
 - A `*.completed` event announces that the job finished.
 
 **The Problem:** There is no single event that tells you how long a job actually took, whether it ran on schedule, or how station performance is trending across stages.
@@ -35,7 +35,7 @@ Your factory publishes raw JSON events across three production stages (defined i
 | **Manufacturing** | `manufacturing-started` | `manufacturing-completed` | Component production at stations (frames, honeycombs) |
 | **Assembly** | `assembly-started` | `assembly-completed` | Final robot assembly lines |
 
-Each event is wrapped in a standard envelope containing metadata (`occurred_at`, `sim_time_minutes`, `factory_id`, `run_id`) and a `payload` containing `job_id` and `duration_ms`.
+Each event is wrapped in a standard envelope containing metadata (`occurred_at`, `sim_time_minutes`, `factory_id`, `run_id`) and a `payload` containing `job_id` and the details of the job (resource, station or output).
 
 ### 2. Output Stream (`job_durations`)
 Flink produces a unified, append-only stream and backing Kafka topic named `job_durations`:
@@ -47,7 +47,6 @@ Flink produces a unified, append-only stream and backing Kafka topic named `job_
 | `subject` / `output_id` | `resource_id` or `station_id` | Identifies which station or item type was worked on |
 | `elapsed_sim_minutes` | `completed.sim_time_minutes - started.sim_time_minutes` | **Exact simulated duration.** Independent of clock drift or simulation speed. |
 | `elapsed_wall_s` | Difference between `occurred_at` timestamps | **Real-world duration in seconds.** Measures real wall-clock latency. |
-| `planned_duration_ms` | `payload.duration_ms` from started event | Expected target duration. Used to detect anomalies when compared with `elapsed_sim_minutes`. |
 
 ---
 

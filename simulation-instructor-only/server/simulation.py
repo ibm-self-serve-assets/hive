@@ -95,6 +95,9 @@ class SimulationRun:
 
         self.active_jobs: Dict[str, ActiveJob] = {}  # station_id -> ActiveJob
         self.completed_robots_count: int = 0
+        self.completed_robots_by_station: Dict[str, int] = {
+            a.station_id: 0 for a in self.rules.assembly
+        }
         self.last_robot_id: Optional[str] = None
         self.last_applied_command_id: Optional[str] = None
 
@@ -145,7 +148,6 @@ class SimulationRun:
                     events = self._apply_single_resource_delivery(
                         res_cfg.name,
                         res_cfg.quantity,
-                        res_cfg.duration_ms,
                         instant,
                         occurred_iso,
                         event_seq_generator,
@@ -199,7 +201,7 @@ class SimulationRun:
                     self.next_delivery_sim_time_ms[res_cfg.name] = interval_ms
                     # The first delivery cycle begins now
                     emitted.append(self._start_resource_cycle(
-                        res_cfg.name, res_cfg.quantity, interval_ms,
+                        res_cfg.name, res_cfg.quantity,
                         0, occurred_iso, event_seq_generator,
                     ))
 
@@ -236,7 +238,6 @@ class SimulationRun:
         self,
         resource_name: str,
         quantity: int,
-        duration_ms: int,
         instant_ms: int,
         occurred_iso: str,
         event_seq_generator,
@@ -252,7 +253,6 @@ class SimulationRun:
                 job_id=job_id,
                 resource_id=resource_name,
                 quantity=quantity,
-                duration_ms=duration_ms,
             ).model_dump(),
             event_id=started_event_id,
         )
@@ -262,7 +262,6 @@ class SimulationRun:
         self,
         resource_name: str,
         quantity: int,
-        interval_ms: int,
         instant_ms: int,
         occurred_iso: str,
         event_seq_generator,
@@ -285,7 +284,7 @@ class SimulationRun:
             causation_id=started_event_id,
         )
         next_started = self._start_resource_cycle(
-            resource_name, quantity, interval_ms, instant_ms, occurred_iso, event_seq_generator,
+            resource_name, quantity, instant_ms, occurred_iso, event_seq_generator,
         )
         return [(".gathering-completed", completed), next_started]
 
@@ -350,6 +349,9 @@ class SimulationRun:
             events.append((".manufacturing-completed", event))
         elif job.output_type == "robot":
             self.completed_robots_count += 1
+            self.completed_robots_by_station[job.station_id] = (
+                self.completed_robots_by_station.get(job.station_id, 0) + 1
+            )
             self.last_robot_id = job.output_id
             payload = RobotAssembledPayload(
                 job_id=job.job_id,
@@ -506,7 +508,6 @@ class SimulationRun:
                             station_id=st_id,
                             output_id=output_id,
                             inputs=dict(inputs),
-                            duration_ms=duration_ms,
                         ).model_dump(),
                     )))
                     started_any = True
@@ -523,30 +524,72 @@ class SimulationRun:
         event_seq_generator,
     ) -> List[Tuple[str, EventEnvelope]]:
         """
-        Schedules robot assembly independently using completed parts inventory.
-        Incrementally stages finished parts into the assembly cart and starts once the
+        Schedules robot assembly stations independently using completed parts inventory.
+        Prioritizes stations with the fewest completed robots first. Each idle station
+        stages whatever part of its recipe is in stock into its cart, and starts once the
         cart holds the whole robot recipe.
         """
         emitted_events: List[Tuple[str, EventEnvelope]] = []
-        st_id = self.rules.worker_assembly.station_id
+        asm_stations = [a.station_id for a in self.rules.assembly]
+        sorted_asm = sorted(
+            asm_stations,
+            key=lambda st_id: self.completed_robots_by_station.get(st_id, 0),
+        )
 
-        if st_id in self.active_jobs:
-            self._blocked_stations.discard(st_id)
-            return []
+        for st_id in sorted_asm:
+            if st_id in self.active_jobs:
+                self._blocked_stations.discard(st_id)
+                continue
 
-        wa = self.rules.worker_assembly
-        robot_cfg = wa.robots[0]
-        inputs_a = wa.inputs
-        duration_ms_a = robot_cfg.duration_ms
-        robot_id = robot_cfg.name
-        missing_parts = self._stage_inputs(st_id, inputs_a, self.parts)
+            asm = self.rules.get_assembly(st_id)
+            if not asm:
+                continue
 
-        if missing_parts:
-            if st_id not in self._blocked_stations:
-                self._blocked_stations.add(st_id)
-                emitted_events.append((".assembly-blocked", EventEnvelope(
-                    event_id=str(uuid.uuid4()),
-                    event_type="assembly.blocked",
+            inputs_a = asm.inputs
+            duration_ms_a = asm.duration_ms
+            robot_id = asm.output_id
+            missing_parts = self._stage_inputs(st_id, inputs_a, self.parts)
+
+            if missing_parts:
+                if st_id not in self._blocked_stations:
+                    self._blocked_stations.add(st_id)
+                    emitted_events.append((".assembly-blocked", EventEnvelope(
+                        event_id=str(uuid.uuid4()),
+                        event_type="assembly.blocked",
+                        schema_version=1,
+                        factory_id=self.factory_id,
+                        server_epoch=self.server_epoch,
+                        run_id=self.run_id,
+                        run_generation=self.run_generation,
+                        event_sequence=event_seq_generator(),
+                        state_revision=self.state_revision,
+                        occurred_at=occurred_iso,
+                        sim_time_minutes=instant_ms // 60_000,
+                        causation_id=None,
+                        payload=ManufacturingBlockedPayload(
+                            station_id=st_id, missing_inputs=missing_parts,
+                        ).model_dump(),
+                    )))
+            else:
+                self._blocked_stations.discard(st_id)
+                self.carts[st_id] = {}  # cart is consumed by the job
+                job_id = str(uuid.uuid4())
+                started_event_id = str(uuid.uuid4())
+                self.active_jobs[st_id] = ActiveJob(
+                    job_id=job_id,
+                    station_id=st_id,
+                    output_id=robot_id,
+                    output_type="robot",
+                    started_at_sim_ms=instant_ms,
+                    completes_at_sim_ms=instant_ms + duration_ms_a,
+                    duration_ms=duration_ms_a,
+                    consumed_inputs=dict(inputs_a),
+                    started_event_id=started_event_id,
+                )
+                self.state_revision += 1
+                emitted_events.append((".assembly-started", EventEnvelope(
+                    event_id=started_event_id,
+                    event_type="assembly.started",
                     schema_version=1,
                     factory_id=self.factory_id,
                     server_epoch=self.server_epoch,
@@ -557,48 +600,13 @@ class SimulationRun:
                     occurred_at=occurred_iso,
                     sim_time_minutes=instant_ms // 60_000,
                     causation_id=None,
-                    payload=ManufacturingBlockedPayload(
-                        station_id=st_id, missing_inputs=missing_parts,
+                    payload=AssemblyStartedPayload(
+                        job_id=job_id,
+                        station_id=st_id,
+                        output_id=robot_id,
+                        inputs=dict(inputs_a),
                     ).model_dump(),
                 )))
-        else:
-            self._blocked_stations.discard(st_id)
-            self.carts[st_id] = {}  # cart is consumed by the job
-            job_id = str(uuid.uuid4())
-            started_event_id = str(uuid.uuid4())
-            self.active_jobs[st_id] = ActiveJob(
-                job_id=job_id,
-                station_id=st_id,
-                output_id=robot_id,
-                output_type="robot",
-                started_at_sim_ms=instant_ms,
-                completes_at_sim_ms=instant_ms + duration_ms_a,
-                duration_ms=duration_ms_a,
-                consumed_inputs=dict(inputs_a),
-                started_event_id=started_event_id,
-            )
-            self.state_revision += 1
-            emitted_events.append((".assembly-started", EventEnvelope(
-                event_id=started_event_id,
-                event_type="assembly.started",
-                schema_version=1,
-                factory_id=self.factory_id,
-                server_epoch=self.server_epoch,
-                run_id=self.run_id,
-                run_generation=self.run_generation,
-                event_sequence=event_seq_generator(),
-                state_revision=self.state_revision,
-                occurred_at=occurred_iso,
-                sim_time_minutes=instant_ms // 60_000,
-                causation_id=None,
-                payload=AssemblyStartedPayload(
-                    job_id=job_id,
-                    station_id=st_id,
-                    output_id=robot_id,
-                    inputs=dict(inputs_a),
-                    duration_ms=duration_ms_a,
-                ).model_dump(),
-            )))
 
         return emitted_events
 
@@ -608,7 +616,7 @@ class SimulationRun:
         for st_id in self.rules.station_order:
             # Determine output_type and inputs for idle-state missing-input calculation
             mfg = self.rules.get_manufacturing(st_id)
-            is_assembly = st_id == self.rules.worker_assembly.station_id
+            asm = self.rules.get_assembly(st_id)
             if st_id in self.active_jobs:
                 job = self.active_jobs[st_id]
                 elapsed = max(0, self.sim_time_ms - job.started_at_sim_ms)
@@ -618,7 +626,6 @@ class SimulationRun:
                     output_id=job.output_id,
                     started_at_sim_ms=job.started_at_sim_ms,
                     completes_at_sim_ms=job.completes_at_sim_ms,
-                    duration_ms=job.duration_ms,
                     consumed_inputs=job.consumed_inputs,
                     progress_percent=round(progress, 2),
                 )
@@ -639,8 +646,8 @@ class SimulationRun:
                         if held < req_qty:
                             missing[res] = req_qty - held
                     st_status = "waiting_for_resources" if missing else "idle"
-                elif is_assembly:
-                    for part, req_qty in self.rules.worker_assembly.inputs.items():
+                elif asm is not None:
+                    for part, req_qty in asm.inputs.items():
                         held = cart.get(part, 0)
                         if held < req_qty:
                             missing[part] = req_qty - held

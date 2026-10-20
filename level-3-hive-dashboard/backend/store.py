@@ -129,8 +129,7 @@ class InMemProjectionStore:
         elif event_type == "manufacturing.started":
             st = payload.get("station_id", "")
             out = payload.get("output_id", "")
-            dur = payload.get("duration_ms", 0) // 1000
-            return f"{st.replace('_', ' ').title()} → {out} ({dur}s)"
+            return f"{st.replace('_', ' ').title()} → {out}"
         elif event_type == "manufacturing.completed":
             st = payload.get("station_id", "")
             part = payload.get("part_id", "")

@@ -52,7 +52,6 @@ class ResourceStartedPayload(BaseModel):
     job_id: str
     resource_id: str
     quantity: int
-    duration_ms: int
 
 
 class ResourceCompletedPayload(BaseModel):
@@ -72,7 +71,6 @@ class JobStartedPayload(BaseModel):
     station_id: str
     output_id: str
     inputs: Dict[str, int]
-    duration_ms: int
 
 
 class PartProducedPayload(BaseModel):
@@ -87,7 +85,6 @@ class AssemblyStartedPayload(BaseModel):
     station_id: str
     output_id: str  # robot type being built: "engineer" or "forager"
     inputs: Dict[str, int]
-    duration_ms: int
 
 
 class RobotAssembledPayload(BaseModel):
@@ -107,7 +104,6 @@ class StationJobState(BaseModel):
     output_id: str
     started_at_sim_ms: int
     completes_at_sim_ms: int
-    duration_ms: int  # internal ms (sim clock units)
     consumed_inputs: Dict[str, int]
     progress_percent: float
 

@@ -55,33 +55,26 @@
       }
     }
   ],
-  "worker_assembly": {
-    "name": "Worker assembly",
-    "inputs": {
-      "chassis": 1,
-      "electronics": 3,
-      "battery": 2,
-      "actuator": 8
-    },
-    "robots" : [
-      { "name": "engineer",
-        "interval_sim_minutes": 10
+  "assembly": [
+    { "name": "worker_assembly",
+      "output_id": "engineer",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "chassis": 1,
+        "electronics": 3,
+        "battery": 2,
+        "actuator": 8
       }
-    ]
-  },
-  "forager_assembly": {
-    "placeholder": true,
-    "name": "Forager assembly",
-    "inputs": {
-      "chassis": 1,
-      "electronics": 3,
-      "battery": 2,
-      "actuator": 8
     },
-    "robots" : [
-      { "name": "forager",
-        "interval_sim_minutes": 10
+    { "name": "forager_assembly",
+      "output_id": "forager",
+      "interval_sim_minutes": 10,
+      "inputs": {
+        "chassis": 1,
+        "electronics": 3,
+        "battery": 2,
+        "actuator": 8
       }
-    ]
-  }
+    }
+  ]
 }

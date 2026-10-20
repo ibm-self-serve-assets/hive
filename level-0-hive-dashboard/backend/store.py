@@ -32,6 +32,10 @@ ASSEMBLY_STATIONS = {
     "forager_assembly": "forager",
 }
 
+# Recent raw events kept per dashboard section (newest first), keyed by event_type prefix.
+EVENT_LOG_CATEGORIES = ("gathering", "manufacturing", "assembly")
+EVENT_LOG_LIMIT = 100
+
 
 class DashboardStore:
     def __init__(self) -> None:
@@ -61,6 +65,9 @@ class DashboardStore:
         self.manufacturing_active: Dict[str, bool] = {s: False for s in STATION_IDS}
         self.assembly_active: Dict[str, bool] = {}
 
+        # Recent events per section, newest first (raw envelopes for the event panels)
+        self.events: Dict[str, list] = {c: [] for c in EVENT_LOG_CATEGORIES}
+
         # Dedup
         self._seen_ids: Dict[str, None] = {}
         self._seen_max = 5000
@@ -76,6 +83,7 @@ class DashboardStore:
         self.gathering_active = {r: False for r in RESOURCE_IDS}
         self.manufacturing_active = {s: False for s in STATION_IDS}
         self.assembly_active = {}
+        self.events = {c: [] for c in EVENT_LOG_CATEGORIES}
         self._seen_ids.clear()
 
     def ingest(self, env: EventEnvelope) -> bool:
@@ -106,12 +114,19 @@ class DashboardStore:
             self.gathering_completed = {r: 0 for r in RESOURCE_IDS}
             self.manufacturing_completed = {s: 0 for s in STATION_IDS}
             self.assembly_completed = {}
+            self.events = {c: [] for c in EVENT_LOG_CATEGORIES}
         elif env.sim_time_minutes > self.latest_sim_time_minutes:
             self.latest_sim_time_minutes = env.sim_time_minutes
         self._last_event_mono = time.monotonic()
 
         et = env.event_type
         p = env.payload
+
+        category = et.split(".", 1)[0]
+        if category in self.events:
+            log = self.events[category]
+            log.insert(0, env.model_dump())
+            del log[EVENT_LOG_LIMIT:]
 
         if et == "factory.state":
             self.lifecycle_status = p.get("lifecycle_status", self.lifecycle_status)
@@ -182,4 +197,5 @@ class DashboardStore:
             "gathering_active": dict(self.gathering_active),
             "manufacturing_active": dict(self.manufacturing_active),
             "assembly_active": dict(self.assembly_active),
+            "events": {c: list(evs) for c, evs in self.events.items()},
         }

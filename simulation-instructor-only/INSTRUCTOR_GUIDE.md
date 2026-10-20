@@ -47,7 +47,7 @@ The latest request explicitly allows manual assignment in Spec 3 and automated Q
 
 The machine-readable source of truth is `simulation-instructor-only/schemas/simulation_rules.json`. It defines the resources, per-resource delivery intervals and quantities, manufacturing recipes, robot assembly recipe and job durations; they are not repeated here. Event and snapshot shapes are in `spec-shared/schemas/event_payloads.json`.
 
-Each resource has its own independent delivery timer (a `gathering.started` → `gathering.completed` cycle that repeats). `forager_assembly` is a **placeholder**: declared with the same recipe and duration as `worker_assembly`, but not scheduled, no events emitted, not shown yet.
+Each resource has its own independent delivery timer (a `gathering.started` → `gathering.completed` cycle that repeats). The `assembly` list in the rules defines `worker_assembly` (engineer) and `forager_assembly` (forager); both are scheduled, use the same provisional recipe and duration, and compete for the same finished parts (fewest completed robots served first). Job durations stay inside the simulation: events and snapshots do not carry `duration_ms`.
 
 Robots are identified by type (`robot_id`), like parts are by `part_id`. There is no per-robot UUID or "W-001" display label; completed robots are counted.
 
