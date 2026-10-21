@@ -4,21 +4,35 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 
+class StationMetadata(BaseModel):
+    level: int
+    cost_purchase: int
+    cost_upgrade: int
+    interval_sim_minutes: int
+
+
+class RobotMetadata(BaseModel):
+    type: str
+    price_in_coins: int
+
+
 class ResourceConfig(BaseModel):
     name: str
-    interval_sim_minutes: int
+    level: int = 1
     quantity: int = 1
+    interval_sim_minutes: Optional[int] = None
 
     @property
     def duration_ms(self) -> int:
-        return self.interval_sim_minutes * 60_000
+        return (self.interval_sim_minutes or 10) * 60_000
 
 
 class ManufacturingConfig(BaseModel):
     name: str                    # e.g. "structural_molding" — used as station_id
-    output_type: str               # e.g. "chassis"
-    interval_sim_minutes: int    # duration of one production cycle in sim-minutes
+    output_type: str             # e.g. "chassis"
+    level: int = 1
     inputs: Dict[str, int]
+    interval_sim_minutes: Optional[int] = None
 
     @property
     def station_id(self) -> str:
@@ -30,18 +44,19 @@ class ManufacturingConfig(BaseModel):
 
     @property
     def duration_ms(self) -> int:
-        return self.interval_sim_minutes * 60_000
+        return (self.interval_sim_minutes or 10) * 60_000
 
     @property
-    def output_type(self) -> str:
+    def kind(self) -> str:
         return "part"
 
 
 class AssemblyConfig(BaseModel):
     name: str                    # e.g. "worker_assembly" — used as station_id
-    output_type: str               # robot type, e.g. "engineer"
-    interval_sim_minutes: int    # duration of one assembly cycle in sim-minutes
+    output_type: str             # robot type, e.g. "engineer"
+    level: int = 1
     inputs: Dict[str, int]
+    interval_sim_minutes: Optional[int] = None
 
     @property
     def station_id(self) -> str:
@@ -49,10 +64,10 @@ class AssemblyConfig(BaseModel):
 
     @property
     def duration_ms(self) -> int:
-        return self.interval_sim_minutes * 60_000
+        return (self.interval_sim_minutes or 10) * 60_000
 
     @property
-    def output_type(self) -> str:
+    def kind(self) -> str:
         return "robot"
 
 
@@ -61,6 +76,20 @@ class SimulationRules(BaseModel):
     parts: List[str]
     manufacturing: List[ManufacturingConfig]
     assembly: List[AssemblyConfig]
+    station_metadata: List[StationMetadata] = []
+    robot_metadata: List[RobotMetadata] = []
+
+    def model_post_init(self, __context) -> None:
+        meta_by_level = {m.level: m for m in self.station_metadata}
+        for item in self.resources:
+            if item.interval_sim_minutes is None and item.level in meta_by_level:
+                item.interval_sim_minutes = meta_by_level[item.level].interval_sim_minutes
+        for item in self.manufacturing:
+            if item.interval_sim_minutes is None and item.level in meta_by_level:
+                item.interval_sim_minutes = meta_by_level[item.level].interval_sim_minutes
+        for item in self.assembly:
+            if item.interval_sim_minutes is None and item.level in meta_by_level:
+                item.interval_sim_minutes = meta_by_level[item.level].interval_sim_minutes
 
     @property
     def resource_names(self) -> List[str]:

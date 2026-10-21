@@ -30,7 +30,7 @@ class ActiveJob:
         job_id: str,
         station_id: str,
         output_type: str,
-        output_type: str,
+        output_kind: str,
         started_at_sim_ms: int,
         completes_at_sim_ms: int,
         duration_ms: int,
@@ -40,7 +40,7 @@ class ActiveJob:
         self.job_id = job_id
         self.station_id = station_id
         self.output_type = output_type
-        self.output_type = output_type
+        self.output_kind = output_kind
         self.started_at_sim_ms = started_at_sim_ms
         self.completes_at_sim_ms = completes_at_sim_ms
         self.duration_ms = duration_ms
@@ -320,7 +320,7 @@ class SimulationRun:
         self.state_revision += 1
         events: List[Tuple[str, EventEnvelope]] = []
 
-        if job.output_type == "part":
+        if job.output_kind == "part":
             self.parts[job.output_type] = self.parts.get(job.output_type, 0) + 1
             self.completed_parts_count[job.station_id] = (
                 self.completed_parts_count.get(job.station_id, 0) + 1
@@ -347,7 +347,7 @@ class SimulationRun:
                 payload=payload.model_dump(),
             )
             events.append((".manufacturing-completed", event))
-        elif job.output_type == "robot":
+        elif job.output_kind == "robot":
             self.completed_robots_count += 1
             self.completed_robots_by_station[job.station_id] = (
                 self.completed_robots_by_station.get(job.station_id, 0) + 1
@@ -482,7 +482,7 @@ class SimulationRun:
                         job_id=job_id,
                         station_id=st_id,
                         output_type=output_type,
-                        output_type="part",
+                        output_kind="part",
                         started_at_sim_ms=instant_ms,
                         completes_at_sim_ms=instant_ms + duration_ms,
                         duration_ms=duration_ms,
@@ -579,7 +579,7 @@ class SimulationRun:
                     job_id=job_id,
                     station_id=st_id,
                     output_type=robot_id,
-                    output_type="robot",
+                    output_kind="robot",
                     started_at_sim_ms=instant_ms,
                     completes_at_sim_ms=instant_ms + duration_ms_a,
                     duration_ms=duration_ms_a,

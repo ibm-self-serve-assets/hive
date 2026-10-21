@@ -2,30 +2,24 @@
   "parts": ["chassis", "electronics", "actuator", "battery"],
   "resources": [
     { "name": "energy",
-      "interval_sim_minutes": 2,
       "level": 3
     },
     { "name": "resin",
-      "interval_sim_minutes": 3,
       "level": 2
     },
     { "name": "silicon",
-      "interval_sim_minutes": 5,
       "level": 2
     },
     { "name": "metals",
-      "interval_sim_minutes": 6,
       "level": 1
     },
     { "name": "copper",
-      "interval_sim_minutes": 3,
       "level": 2
     }
   ],
   "manufacturing": [
     { "name": "structural_molding",
       "output_type": "chassis",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "energy": 1,
@@ -35,7 +29,6 @@
     },
     { "name": "Electronics assembly",
       "output_type": "electronics",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "energy": 1,
@@ -45,7 +38,6 @@
     },
     { "name": "Actuator fabrication",
       "output_type": "actuator",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "energy": 1,
@@ -55,7 +47,6 @@
     },
     { "name": "Battery assembly",
       "output_type": "battery",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "energy": 5,
@@ -67,7 +58,6 @@
   "assembly": [
     { "name": "worker_assembly",
       "output_type": "engineer",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "chassis": 1,
@@ -78,7 +68,6 @@
     },
     { "name": "forager_assembly",
       "output_type": "forager",
-      "interval_sim_minutes": 10,
       "level": 1,
       "inputs": {
         "chassis": 1,
@@ -88,21 +77,24 @@
       }
     }
   ],
-  "station_costs": [
+  "station_metadata": [
     { "level": 1,
-      "cost": 100,
+      "cost_purchase": 100,
+      "cost_upgrade": 100,
       "interval_sim_minutes": 10
     },
     { "level": 2,
-      "cost": 500,
-      "interval_sim_minutes": 10
+      "cost_purchase": 500,
+      "cost_upgrade": 500,
+      "interval_sim_minutes": 5
     },
-    { "level": 1,
-      "cost": 1000,
-      "interval_sim_minutes": 10
+    { "level": 3,
+      "cost_purchase": 1000,
+      "cost_upgrade": -1,
+      "interval_sim_minutes": 3
     }
   ],
-  "robot_prices": [
+  "robot_metadata": [
     { "type": "engineer",
       "price_in_coins": 250
     },
