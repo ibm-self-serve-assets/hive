@@ -61,7 +61,7 @@ class DashboardStore:
         # Completed counts: resource_id / station_id / robot_id → int
         self.gathering_completed: Dict[str, int] = {r: 0 for r in RESOURCE_IDS}
         self.manufacturing_completed: Dict[str, int] = {s: 0 for s in STATION_IDS}
-        self.assembly_completed: Dict[str, int] = {}  # output_id → count
+        self.assembly_completed: Dict[str, int] = {}  # output_type → count
 
         # Active jobs: tracks currently in-progress jobs per "slot"
         # gathering: resource_id → bool
@@ -241,12 +241,12 @@ class DashboardStore:
 
         if et == "assembly.completed":
             sid = p.get("station_id")
-            output_id = p.get("output_id", sid)
+            output_type = p.get("output_type", sid)
             if sid:
                 self.assembly_active[sid] = False
                 self.assembly_blocked.pop(sid, None)
-            if output_id:
-                self.assembly_completed[output_id] = self.assembly_completed.get(output_id, 0) + 1
+            if output_type:
+                self.assembly_completed[output_type] = self.assembly_completed.get(output_type, 0) + 1
             return True
 
         if et == "assembly.blocked":

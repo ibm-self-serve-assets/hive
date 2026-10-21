@@ -39,16 +39,16 @@ export function describeEvent(ev: HiveEvent): string {
     case 'gathering.blocked':
       return `${titleCase(String(p.resource_id ?? ''))}: ${String(p.reason ?? 'blocked')}`;
     case 'manufacturing.started':
-      return `${station} → ${titleCase(String(p.output_id ?? ''))} (uses ${fmtCounts(p.inputs)})`;
+      return `${station} → ${titleCase(String(p.output_type ?? ''))} (uses ${fmtCounts(p.inputs)})`;
     case 'manufacturing.completed':
       return `${titleCase(String(p.part_id ?? ''))} +${asNum(p.quantity) || 1} from ${station}`;
     case 'manufacturing.blocked':
     case 'assembly.blocked':
       return `${station} waiting for ${fmtCounts(p.missing_inputs) || 'inputs'}`;
     case 'assembly.started':
-      return `${station} → ${titleCase(String(p.output_id ?? ''))} (uses ${fmtCounts(p.inputs)})`;
+      return `${station} → ${titleCase(String(p.output_type ?? ''))} (uses ${fmtCounts(p.inputs)})`;
     case 'assembly.completed':
-      return `${titleCase(String(p.output_id ?? ''))} +${asNum(p.quantity) || 1} from ${station}`;
+      return `${titleCase(String(p.output_type ?? ''))} +${asNum(p.quantity) || 1} from ${station}`;
     default:
       return Object.keys(p).length ? sentenceCase(Object.keys(p).join(', ')) : '';
   }

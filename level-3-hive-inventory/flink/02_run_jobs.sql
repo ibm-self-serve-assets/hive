@@ -183,7 +183,7 @@ GROUP BY factory_id, run_id, item_id;
 
 -- ============================================================================
 -- JOB 3: Robot inventory
---   Inflows only: assembly-completed (payload.output_id, payload.quantity)
+--   Inflows only: assembly-completed (payload.output_type, payload.quantity)
 --   Robots are never consumed.
 -- ============================================================================
 INSERT INTO `hive_inventory_balances`
@@ -191,13 +191,13 @@ SELECT
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
   'robot'                                                                         AS item_type,
-  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_id')                       AS item_id,
+  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                       AS item_id,
   SUM(CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.quantity') AS BIGINT))   AS quantity
 FROM `assembly-completed`
-WHERE JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_id') IS NOT NULL
+WHERE JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type') IS NOT NULL
 GROUP BY
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id'),
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id'),
-  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_id');
+  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type');
 
 END;

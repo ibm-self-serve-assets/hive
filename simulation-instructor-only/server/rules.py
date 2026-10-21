@@ -16,7 +16,7 @@ class ResourceConfig(BaseModel):
 
 class ManufacturingConfig(BaseModel):
     name: str                    # e.g. "structural_molding" — used as station_id
-    output_id: str               # e.g. "chassis"
+    output_type: str               # e.g. "chassis"
     interval_sim_minutes: int    # duration of one production cycle in sim-minutes
     inputs: Dict[str, int]
 
@@ -39,7 +39,7 @@ class ManufacturingConfig(BaseModel):
 
 class AssemblyConfig(BaseModel):
     name: str                    # e.g. "worker_assembly" — used as station_id
-    output_id: str               # robot type, e.g. "engineer"
+    output_type: str               # robot type, e.g. "engineer"
     interval_sim_minutes: int    # duration of one assembly cycle in sim-minutes
     inputs: Dict[str, int]
 

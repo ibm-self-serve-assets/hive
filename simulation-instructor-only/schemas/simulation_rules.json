@@ -2,25 +2,31 @@
   "parts": ["chassis", "electronics", "actuator", "battery"],
   "resources": [
     { "name": "energy",
-      "interval_sim_minutes": 2
+      "interval_sim_minutes": 2,
+      "level": 3
     },
     { "name": "resin",
-      "interval_sim_minutes": 3
+      "interval_sim_minutes": 3,
+      "level": 2
     },
     { "name": "silicon",
-      "interval_sim_minutes": 5
+      "interval_sim_minutes": 5,
+      "level": 2
     },
     { "name": "metals",
-      "interval_sim_minutes": 6
+      "interval_sim_minutes": 6,
+      "level": 1
     },
     { "name": "copper",
-      "interval_sim_minutes": 3
+      "interval_sim_minutes": 3,
+      "level": 2
     }
   ],
   "manufacturing": [
     { "name": "structural_molding",
-      "output_id": "chassis",
+      "output_type": "chassis",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "energy": 1,
         "resin": 3,
@@ -28,8 +34,9 @@
       }
     },
     { "name": "Electronics assembly",
-      "output_id": "electronics",
+      "output_type": "electronics",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "energy": 1,
         "silicon": 3,
@@ -37,8 +44,9 @@
       }
     },
     { "name": "Actuator fabrication",
-      "output_id": "actuator",
+      "output_type": "actuator",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "energy": 1,
         "metals": 2,
@@ -46,8 +54,9 @@
       }
     },
     { "name": "Battery assembly",
-      "output_id": "battery",
+      "output_type": "battery",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "energy": 5,
         "copper": 2,
@@ -57,8 +66,9 @@
   ],
   "assembly": [
     { "name": "worker_assembly",
-      "output_id": "engineer",
+      "output_type": "engineer",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "chassis": 1,
         "electronics": 3,
@@ -67,14 +77,37 @@
       }
     },
     { "name": "forager_assembly",
-      "output_id": "forager",
+      "output_type": "forager",
       "interval_sim_minutes": 10,
+      "level": 1,
       "inputs": {
         "chassis": 1,
         "electronics": 3,
         "battery": 2,
         "actuator": 8
       }
+    }
+  ],
+  "station_costs": [
+    { "level": 1,
+      "cost": 100,
+      "interval_sim_minutes": 10
+    },
+    { "level": 2,
+      "cost": 500,
+      "interval_sim_minutes": 10
+    },
+    { "level": 1,
+      "cost": 1000,
+      "interval_sim_minutes": 10
+    }
+  ],
+  "robot_prices": [
+    { "type": "engineer",
+      "price_in_coins": 250
+    },
+    { "type": "forager",
+      "price_in_coins": 250
     }
   ]
 }

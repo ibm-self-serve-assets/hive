@@ -217,7 +217,7 @@ Parts are produced by manufacturing completions and consumed when assembly stati
 
 ### Robots
 ```
-robots[output_id] = SUM(assembly-completed.payload.quantity  WHERE output_id = item_id)
+robots[output_type] = SUM(assembly-completed.payload.quantity  WHERE output_type = item_id)
 ```
 Robots only accumulate — nothing consumes them.
 

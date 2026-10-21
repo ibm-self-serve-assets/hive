@@ -69,7 +69,7 @@ class ResourceBlockedPayload(BaseModel):
 class JobStartedPayload(BaseModel):
     job_id: str
     station_id: str
-    output_id: str
+    output_type: str
     inputs: Dict[str, int]
 
 
@@ -83,14 +83,14 @@ class PartProducedPayload(BaseModel):
 class AssemblyStartedPayload(BaseModel):
     job_id: str
     station_id: str
-    output_id: str  # robot type being built: "engineer" or "forager"
+    output_type: str  # robot type being built: "engineer" or "forager"
     inputs: Dict[str, int]
 
 
 class RobotAssembledPayload(BaseModel):
     job_id: str
     station_id: str
-    output_id: str  # robot type completed: "engineer" or "forager"
+    output_type: str  # robot type completed: "engineer" or "forager"
     quantity: int = 1
 
 
@@ -101,7 +101,7 @@ class ManufacturingBlockedPayload(BaseModel):
 
 class StationJobState(BaseModel):
     job_id: str
-    output_id: str
+    output_type: str
     started_at_sim_ms: int
     completes_at_sim_ms: int
     consumed_inputs: Dict[str, int]

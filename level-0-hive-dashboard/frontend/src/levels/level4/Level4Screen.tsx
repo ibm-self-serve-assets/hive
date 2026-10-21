@@ -40,11 +40,11 @@ const PART_ICON: Record<string, string> = {
   battery:     '/icons/svg/parts_battery.svg',
 };
 
-const STATIONS: { id: string; label: string; icon: string; output_id: string }[] = [
-  { id: 'actuator_fabrication', label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg',    output_id: 'actuator' },
-  { id: 'battery_assembly',     label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg',     output_id: 'battery' },
-  { id: 'structural_molding',   label: 'Chassis Molding',      icon: '/icons/svg/parts_chassis.svg',     output_id: 'chassis' },
-  { id: 'electronics_assembly', label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg', output_id: 'electronics' },
+const STATIONS: { id: string; label: string; icon: string; output_type: string }[] = [
+  { id: 'actuator_fabrication', label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg',    output_type: 'actuator' },
+  { id: 'battery_assembly',     label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg',     output_type: 'battery' },
+  { id: 'structural_molding',   label: 'Chassis Molding',      icon: '/icons/svg/parts_chassis.svg',     output_type: 'chassis' },
+  { id: 'electronics_assembly', label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg', output_type: 'electronics' },
 ];
 
 const ROBOTS: { id: string; station_id: string; label: string; icon: string }[] = [
@@ -174,10 +174,10 @@ export const Level4Screen: React.FC<LevelScreenProps> = ({ state }) => {
             <div className="rounded-xl border border-[#E0E8F8] bg-white p-5" style={{ minHeight: 480 }}>
               <h2 className="text-[#2850B8] font-bold text-base mb-4">Parts manufacturing</h2>
               <div className="flex flex-col gap-3">
-                {STATIONS.map(({ id, label, icon, output_id }) => {
+                {STATIONS.map(({ id, label, icon, output_type }) => {
                   const count      = manufacturing_completed[id] ?? 0;
                   const blocked    = id in manufacturing_blocked;
-                  const dur        = job_durations[id] ?? job_durations[output_id];
+                  const dur        = job_durations[id] ?? job_durations[output_type];
                   const inputs     = manufacturing_inputs[id] ?? {};
                   const missingSet = blocked ? new Set(Object.keys(manufacturing_blocked[id] ?? {})) : undefined;
                   return (
@@ -192,7 +192,7 @@ export const Level4Screen: React.FC<LevelScreenProps> = ({ state }) => {
                         </button>
                       </div>
                       <div className="flex items-center justify-between gap-4">
-                        <img src={icon} width={55} height={55} alt={output_id}
+                        <img src={icon} width={55} height={55} alt={output_type}
                           style={{ objectFit: 'contain' }} />
                         <StationStats count={count} blocked={blocked} durationMins={dur} running={running}
                           tooltip="Waiting for resources" ringSize={85} align="end" showCount={false}

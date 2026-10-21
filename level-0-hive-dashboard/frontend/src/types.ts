@@ -28,7 +28,7 @@ export interface DashboardState {
   lifecycle_status: 'paused' | 'running' | 'stopped' | 'expired';
   running: boolean;
 
-  // Completed counts keyed by resource_id / station_id / output_id
+  // Completed counts keyed by resource_id / station_id / output_type
   gathering_completed: Record<string, number>;
   manufacturing_completed: Record<string, number>;
   assembly_completed: Record<string, number>;

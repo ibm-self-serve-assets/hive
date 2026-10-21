@@ -31,7 +31,7 @@ CREATE TABLE `hive_job_durations` (
   `started_topic`       STRING,           -- Kafka topic the started event came from
   `completed_topic`     STRING,           -- Kafka topic the completed event came from
   `subject`             STRING,           -- resource_id (gathering) or station_id
-  `output_id`           STRING,           -- what the job produced
+  `output_type`           STRING,           -- what the job produced
   `started_at`          TIMESTAMP(3),     -- wall-clock time of the started event (UTC)
   `completed_at`        TIMESTAMP(3),     -- wall-clock time of the completed event (UTC)
   `elapsed_sim_minutes` BIGINT,           -- simulated time between the two events in minutes (exact; 1 real second = 1 sim minute)

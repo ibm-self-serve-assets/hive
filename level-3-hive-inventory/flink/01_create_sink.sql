@@ -9,7 +9,7 @@
 --
 -- SCHEMA DESIGN
 --   item_type  : 'resource' | 'part' | 'robot'
---   item_id    : resource_id, part_id, or robot output_id
+--   item_id    : resource_id, part_id, or robot output_type
 --   quantity   : running net balance (deliveries/completions minus consumption)
 --
 -- WHY UPSERT (not append like hive_job_durations)

@@ -44,7 +44,7 @@ Flink produces a unified, append-only stream and backing Kafka topic named `hive
 |---|---|---|
 | `job_id` | Shared `payload.job_id` | Correlates both events together |
 | `stage` | `gathering`, `manufacturing`, or `assembly` | Allows cross-stage filtering and grouping |
-| `subject` / `output_id` | `resource_id` or `station_id` | Identifies which station or item type was worked on |
+| `subject` / `output_type` | `resource_id` or `station_id` | Identifies which station or item type was worked on |
 | `elapsed_sim_minutes` | `completed.sim_time_minutes - started.sim_time_minutes` | **Exact simulated duration.** Independent of clock drift or simulation speed. |
 | `elapsed_wall_s` | Difference between `occurred_at` timestamps | **Real-world duration in seconds.** Measures real wall-clock latency. |
 

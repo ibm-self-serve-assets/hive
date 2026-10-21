@@ -44,7 +44,7 @@
     },
     "manufacturing.started": {
       "type": "object",
-      "required": ["job_id", "station_id", "output_id", "inputs"],
+      "required": ["job_id", "station_id", "output_type", "inputs"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "station_id": {
@@ -56,7 +56,7 @@
             "battery_assembly"
           ]
         },
-        "output_id": {
+        "output_type": {
           "type": "string",
           "enum": ["chassis", "electronics", "actuator", "battery"]
         },
@@ -111,14 +111,14 @@
     },
     "assembly.started": {
       "type": "object",
-      "required": ["job_id", "station_id", "output_id", "inputs"],
+      "required": ["job_id", "station_id", "output_type", "inputs"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "station_id": {
           "type": "string",
           "enum": ["worker_assembly", "forager_assembly"]
         },
-        "output_id": {
+        "output_type": {
           "type": "string",
           "enum": ["engineer", "forager"]
         },
@@ -131,14 +131,14 @@
     },
     "assembly.completed": {
       "type": "object",
-      "required": ["job_id", "station_id", "output_id", "quantity"],
+      "required": ["job_id", "station_id", "output_type", "quantity"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "station_id": {
           "type": "string",
           "enum": ["worker_assembly", "forager_assembly"]
         },
-        "output_id": {
+        "output_type": {
           "type": "string",
           "enum": ["engineer", "forager"]
         },
@@ -262,7 +262,7 @@
                     "type": "object",
                     "required": [
                       "job_id",
-                      "output_id",
+                      "output_type",
                       "started_at_sim_ms",
                       "completes_at_sim_ms",
                       "consumed_inputs",
@@ -270,7 +270,7 @@
                     ],
                     "properties": {
                       "job_id": { "type": "string", "format": "uuid" },
-                      "output_id": { "type": "string" },
+                      "output_type": { "type": "string" },
                       "started_at_sim_ms": { "type": "integer", "minimum": 0 },
                       "completes_at_sim_ms": { "type": "integer", "minimum": 0 },
                       "consumed_inputs": { "type": "object" },

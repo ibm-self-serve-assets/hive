@@ -29,7 +29,7 @@ class ActiveJob:
         self,
         job_id: str,
         station_id: str,
-        output_id: str,
+        output_type: str,
         output_type: str,
         started_at_sim_ms: int,
         completes_at_sim_ms: int,
@@ -39,7 +39,7 @@ class ActiveJob:
     ):
         self.job_id = job_id
         self.station_id = station_id
-        self.output_id = output_id
+        self.output_type = output_type
         self.output_type = output_type
         self.started_at_sim_ms = started_at_sim_ms
         self.completes_at_sim_ms = completes_at_sim_ms
@@ -321,14 +321,14 @@ class SimulationRun:
         events: List[Tuple[str, EventEnvelope]] = []
 
         if job.output_type == "part":
-            self.parts[job.output_id] = self.parts.get(job.output_id, 0) + 1
+            self.parts[job.output_type] = self.parts.get(job.output_type, 0) + 1
             self.completed_parts_count[job.station_id] = (
                 self.completed_parts_count.get(job.station_id, 0) + 1
             )
             payload = PartProducedPayload(
                 job_id=job.job_id,
                 station_id=job.station_id,
-                part_id=job.output_id,
+                part_id=job.output_type,
                 quantity=1,
             )
             event = EventEnvelope(
@@ -352,11 +352,11 @@ class SimulationRun:
             self.completed_robots_by_station[job.station_id] = (
                 self.completed_robots_by_station.get(job.station_id, 0) + 1
             )
-            self.last_robot_id = job.output_id
+            self.last_robot_id = job.output_type
             payload = RobotAssembledPayload(
                 job_id=job.job_id,
                 station_id=job.station_id,
-                output_id=job.output_id,
+                output_type=job.output_type,
                 quantity=1,
             )
             event = EventEnvelope(
@@ -450,7 +450,7 @@ class SimulationRun:
 
                 inputs = mfg.inputs
                 duration_ms = mfg.duration_ms
-                output_id = mfg.output_id
+                output_type = mfg.output_type
                 missing = self._stage_inputs(st_id, inputs, self.resources)
 
                 if missing:
@@ -481,7 +481,7 @@ class SimulationRun:
                     self.active_jobs[st_id] = ActiveJob(
                         job_id=job_id,
                         station_id=st_id,
-                        output_id=output_id,
+                        output_type=output_type,
                         output_type="part",
                         started_at_sim_ms=instant_ms,
                         completes_at_sim_ms=instant_ms + duration_ms,
@@ -506,7 +506,7 @@ class SimulationRun:
                         payload=JobStartedPayload(
                             job_id=job_id,
                             station_id=st_id,
-                            output_id=output_id,
+                            output_type=output_type,
                             inputs=dict(inputs),
                         ).model_dump(),
                     )))
@@ -547,7 +547,7 @@ class SimulationRun:
 
             inputs_a = asm.inputs
             duration_ms_a = asm.duration_ms
-            robot_id = asm.output_id
+            robot_id = asm.output_type
             missing_parts = self._stage_inputs(st_id, inputs_a, self.parts)
 
             if missing_parts:
@@ -578,7 +578,7 @@ class SimulationRun:
                 self.active_jobs[st_id] = ActiveJob(
                     job_id=job_id,
                     station_id=st_id,
-                    output_id=robot_id,
+                    output_type=robot_id,
                     output_type="robot",
                     started_at_sim_ms=instant_ms,
                     completes_at_sim_ms=instant_ms + duration_ms_a,
@@ -603,7 +603,7 @@ class SimulationRun:
                     payload=AssemblyStartedPayload(
                         job_id=job_id,
                         station_id=st_id,
-                        output_id=robot_id,
+                        output_type=robot_id,
                         inputs=dict(inputs_a),
                     ).model_dump(),
                 )))
@@ -623,7 +623,7 @@ class SimulationRun:
                 progress = min(100.0, max(0.0, (elapsed / job.duration_ms) * 100.0))
                 job_state = StationJobState(
                     job_id=job.job_id,
-                    output_id=job.output_id,
+                    output_type=job.output_type,
                     started_at_sim_ms=job.started_at_sim_ms,
                     completes_at_sim_ms=job.completes_at_sim_ms,
                     consumed_inputs=job.consumed_inputs,

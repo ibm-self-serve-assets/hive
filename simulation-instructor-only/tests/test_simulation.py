@@ -163,7 +163,7 @@ def test_assembly_cart_accumulates_parts_incrementally():
 def test_assembly_rules_declare_engineer_and_forager():
     rules = get_simulation_rules()
 
-    assert [(a.station_id, a.output_id) for a in rules.assembly] == [
+    assert [(a.station_id, a.output_type) for a in rules.assembly] == [
         ("worker_assembly", "engineer"), ("forager_assembly", "forager"),
     ]
     assert rules.get_assembly("forager_assembly").duration_ms == 600000
@@ -196,12 +196,12 @@ def test_forager_cart_accumulates_parts_until_full_then_assembles():
     assert "forager_assembly" in sim.active_jobs
     assert sim.carts["forager_assembly"] == {}
     started = [ev for _, ev in events if ev.event_type == "assembly.started"]
-    assert [ev.payload["output_id"] for ev in started] == ["forager"]
+    assert [ev.payload["output_type"] for ev in started] == ["forager"]
 
     # Job completes: forager counted, snapshot reports it as the latest robot
     job = sim.active_jobs.pop("forager_assembly")
     events = sim._complete_job(job, job.completes_at_sim_ms, "t", gen)
-    assert events[0][1].payload["output_id"] == "forager"
+    assert events[0][1].payload["output_type"] == "forager"
     assert sim.completed_robots_by_station["forager_assembly"] == 1
     assert sim.build_snapshot_payload().completed_robots.last_robot_id == "forager"
 

@@ -41,7 +41,7 @@
 --
 -- Event fields used (see spec-shared/schemas/event_payloads.json):
 --   envelope : factory_id, run_id, occurred_at, sim_time_minutes
---   payload  : job_id, resource_id / station_id / output_id
+--   payload  : job_id, resource_id / station_id / output_type
 -- =============================================================================
 
 EXECUTE STATEMENT SET
@@ -54,7 +54,7 @@ SELECT
   'gathering'                                         AS stage,
   'gathering-started'                                 AS started_topic,
   'gathering-completed'                               AS completed_topic,
-  s.subject, s.output_id,
+  s.subject, s.output_type,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
@@ -65,7 +65,7 @@ FROM (
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                         AS subject,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                         AS output_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                         AS output_type,
     CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time
@@ -89,7 +89,7 @@ SELECT
   'manufacturing'                                     AS stage,
   'manufacturing-started'                             AS started_topic,
   'manufacturing-completed'                           AS completed_topic,
-  s.subject, s.output_id,
+  s.subject, s.output_type,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
@@ -100,7 +100,7 @@ FROM (
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.station_id')                          AS subject,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_id')                           AS output_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                           AS output_type,
     CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time
@@ -124,7 +124,7 @@ SELECT
   'assembly'                                          AS stage,
   'assembly-started'                                  AS started_topic,
   'assembly-completed'                                AS completed_topic,
-  s.subject, s.output_id,
+  s.subject, s.output_type,
   s.occurred_at                                       AS started_at,
   c.occurred_at                                       AS completed_at,
   c.sim_time_minutes - s.sim_time_minutes             AS elapsed_sim_minutes,
@@ -135,7 +135,7 @@ FROM (
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.station_id')                          AS subject,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_id')                           AS output_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                           AS output_type,
     CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.sim_time_minutes') AS BIGINT)           AS sim_time_minutes,
     CAST(REPLACE(REPLACE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.occurred_at'), 'T', ' '), '+00:00', '') AS TIMESTAMP(3)) AS occurred_at,
     `$rowtime`                                                                         AS row_time

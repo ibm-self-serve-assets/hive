@@ -85,7 +85,7 @@ def test_schema_conformance(schemas):
 
     # assembly.completed payload spot-check
     assembly_completions = [ev for _, ev in events_adv if ev.event_type == "assembly.completed"]
-    assert all(ev.payload["output_id"] == "engineer" for ev in assembly_completions)
+    assert all(ev.payload["output_type"] == "engineer" for ev in assembly_completions)
 
     # 4. Final snapshot conforms
     _, final_snap = sim.create_snapshot_event(event_seq_generator=gen_seq)
