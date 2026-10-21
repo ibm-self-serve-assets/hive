@@ -18,12 +18,16 @@ In Level 1, attendees connect their local dashboard to Confluent Cloud to monito
 
 ### Step 1: Provision Topics on Confluent Cloud
 
-Ensure your `spec-shared/.env` file is configured with your Confluent credentials and workshop access token:
+Before you start, finish [Level 0](../level-0-hive-dashboard/README.md). It covers creating your Confluent Cloud environment, cluster and API key, and filling in `spec-shared/.env` with your Confluent credentials and workshop access token.
+
+The script creates the 10 topics listed in [`spec-shared/schemas/event_payloads.json`](../spec-shared/schemas/event_payloads.json) and is safe to run more than once:
 
 ```bash
 cd level-1-connect-simulation
 ./provision_topics.sh
 ```
+
+To preview the topic names without calling Confluent, run `./provision_topics.sh --dry-run`.
 
 ---
 
@@ -44,15 +48,21 @@ npm install
 npm run dev
 ```
 
-The dashboard will open at `http://localhost:5173` (or `http://localhost:5174`).
+The dashboard will open at `http://localhost:5174` (or the port shown in your terminal).
 
 ---
 
 ## Validation & Acceptance Criteria
 
-- The dashboard shows **`connected`** in the status pill.
+- The dashboard shows **Connected** in the status pill.
 - Clicking **Run** boots the factory simulation on the cloud server.
 - The simulation clock advances (`0d 00h 00m` upwards at 1 real sec = 1 sim min).
 - Resource gathering counters increment as resources arrive.
 - Stations trigger and animated dot flows pulse from Resources $\rightarrow$ Parts $\rightarrow$ Robots.
 - Factory controls (Run, Pause, Stop, Restart) respond seamlessly.
+
+---
+
+## Next Step
+
+Proceed to **[Level 2 — Intro to Flink](../level-2-intro-to-flink/README.md)** to turn the `started` and `completed` events into job durations.

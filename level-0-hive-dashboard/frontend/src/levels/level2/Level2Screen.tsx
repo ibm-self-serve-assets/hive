@@ -1,7 +1,7 @@
 import React from 'react';
 import { EventPanel } from '../../components/EventPanel';
 import { FlowDots } from '../../components/FlowDots';
-import { ProgressRing } from '../../components/ProgressRing';
+import { StationStats } from '../../components/StationStats';
 import type { LevelScreenProps } from '../types';
 
 // ── Static metadata ───────────────────────────────────────────────────────────
@@ -30,10 +30,10 @@ const PART_ICON: Record<string, string> = {
 };
 
 const STATIONS: { id: string; label: string; icon: string; output_id: string }[] = [
-  { id: 'structural_molding',   label: 'Structural Molding',   icon: '/icons/svg/parts_chassis.svg',      output_id: 'chassis' },
-  { id: 'electronics_assembly', label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg',  output_id: 'electronics' },
-  { id: 'actuator_fabrication', label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg',     output_id: 'actuator' },
-  { id: 'battery_assembly',     label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg',      output_id: 'battery' },
+  { id: 'actuator_fabrication', label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg',    output_id: 'actuator' },
+  { id: 'battery_assembly',     label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg',     output_id: 'battery' },
+  { id: 'structural_molding',   label: 'Chassis Molding',      icon: '/icons/svg/parts_chassis.svg',     output_id: 'chassis' },
+  { id: 'electronics_assembly', label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg', output_id: 'electronics' },
 ];
 
 const ROBOTS: { id: string; station_id: string; label: string; icon: string }[] = [
@@ -58,13 +58,12 @@ const InputChip: React.FC<{
   >
     <img
       src={icon}
-      width={14}
-      height={14}
+      width={23}
+      height={23}
       alt=""
       style={{
         objectFit: 'contain',
-        filter: blocked ? 'none' : 'grayscale(1)',
-        opacity: blocked ? 1 : 0.7,
+        opacity: blocked ? 1 : 0.85,
       }}
     />
     <span className="text-xs font-semibold tabular-nums" style={{ fontSize: 11 }}>
@@ -94,53 +93,15 @@ const InputChips: React.FC<{
   </span>
 );
 
-/**
- * The station spinner area: either the ProgressRing (when active or idle)
- * or the warning icon (when blocked).
- */
-const StationSpinner: React.FC<{
-  active: boolean;
-  blocked: boolean;
-  durationMins?: number;
-  count: number;
-  size?: number;
-}> = ({ active, blocked, durationMins, count, size = 68 }) => {
-  if (blocked) {
-    return (
-      <div
-        className="flex items-center justify-center rounded-full border border-[#E8EFF8] bg-[#FFF8F4]"
-        style={{ width: size, height: size }}
-      >
-        <img src="/icons/svg/warning.svg" width={32} height={32} alt="blocked" style={{ objectFit: 'contain' }} />
-      </div>
-    );
-  }
-
-  // Label: "n mins" if we have a Flink-derived duration, otherwise "+count"
-  const label = durationMins != null
-    ? `${durationMins} mins`
-    : `+${count}`;
-
-  return (
-    <ProgressRing
-      label={label}
-      size={size}
-      spinning={active}
-      segments={durationMins}
-    />
-  );
-};
-
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
   const {
+    run_generation,
+    running,
     gathering_completed,
     manufacturing_completed,
     assembly_completed,
-    gathering_active,
-    manufacturing_active,
-    assembly_active,
     gathering_blocked,
     manufacturing_blocked,
     assembly_blocked,
@@ -149,6 +110,51 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
     job_durations,
     events,
   } = state;
+
+  // Show a restart prompt when there is an active run but Flink hasn't produced
+  // any job durations yet — meaning the user is looking at Level 2 with stale
+  // Level 1 data.  Once Flink starts writing to hive_job_durations the prompt
+  // disappears automatically.
+  const needsRestart = run_generation > 0 && Object.keys(job_durations).length === 0;
+
+  if (needsRestart) {
+    const simRunning = state.running;
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          {simRunning ? (
+            <>
+              <div className="mx-auto mb-4" style={{ width: 48, height: 48 }}>
+                {/* Pulsing dot to indicate waiting */}
+                <svg viewBox="0 0 48 48" width={48} height={48}>
+                  <circle cx="24" cy="24" r="10" fill="#2850B8" opacity="0.2">
+                    <animate attributeName="r" values="8;16;8" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.6;0.1;0.6" dur="2s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="24" cy="24" r="6" fill="#2850B8" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-[#031040] mb-2">Waiting for Flink…</h2>
+              <p className="text-sm text-[#57606A] leading-relaxed">
+                The simulation is running. Waiting for the first job duration
+                from the <code className="font-mono text-[#031040]">hive_job_durations</code> pipeline.
+                This can take up to a minute after the first job completes.
+              </p>
+            </>
+          ) : (
+            <>
+              <img src="/icons/svg/warning.svg" width={48} height={48} alt="" className="mx-auto mb-4 opacity-60" />
+              <h2 className="text-xl font-bold text-[#031040] mb-2">New simulation run required</h2>
+              <p className="text-sm text-[#57606A] leading-relaxed">
+                Level 2 needs a fresh run so the Flink pipeline can calculate job
+                durations from the start. Click <strong>Restart</strong> in the sidebar to begin.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -160,30 +166,33 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="text-[#2850B8] font-bold text-base mb-4">Resource gathering</h2>
+            <h2 className="text-[#2850B8] font-bold text-base mb-4">Resources Gathered</h2>
             <div className="grid grid-cols-2 gap-3">
               {RESOURCES.map(({ id, label, icon }) => {
                 const count   = gathering_completed[id] ?? 0;
-                const active  = gathering_active[id] ?? false;
                 const blocked = id in gathering_blocked;
                 const dur     = job_durations[id];
 
                 return (
                   <div
                     key={id}
-                    className="rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] p-3 flex flex-col items-center gap-2"
+                    className="rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] p-3 flex flex-col justify-between"
                   >
-                    <div className="flex items-center gap-2 self-start">
-                      <img src={icon} width={16} height={16} alt={label} style={{ objectFit: 'contain', filter: 'grayscale(1)', opacity: 0.7 }} />
-                      <span className="text-xs font-semibold text-[#57606A]">{label}</span>
+                    <div className="flex items-center gap-2">
+                      <img src={icon} width={33} height={33} alt={label} />
+                      <span className="text-sm font-semibold text-[#031040]">{label}</span>
                     </div>
-                    <StationSpinner
-                      active={active}
-                      blocked={blocked}
-                      durationMins={dur}
-                      count={count}
-                      size={72}
-                    />
+                    <div className="mt-3">
+                      <StationStats
+                        count={count}
+                        blocked={blocked}
+                        durationMins={dur}
+                        running={running}
+                        tooltip="Waiting for resources"
+                        ringSize={95}
+                        countScale={0.19}
+                      />
+                    </div>
                   </div>
                 );
               })}
@@ -200,11 +209,10 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="text-[#2850B8] font-bold text-base mb-4">Parts manufacturing</h2>
+            <h2 className="text-[#2850B8] font-bold text-base mb-4">Parts Manufactured</h2>
             <div className="flex flex-col gap-3">
               {STATIONS.map(({ id, label, icon, output_id }) => {
                 const count   = manufacturing_completed[id] ?? 0;
-                const active  = manufacturing_active[id] ?? false;
                 const blocked = id in manufacturing_blocked;
                 const dur     = job_durations[id] ?? job_durations[output_id];
                 const inputs  = manufacturing_inputs[id] ?? {};
@@ -216,30 +224,26 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
                 return (
                   <div
                     key={id}
-                    className="rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] px-4 py-3"
+                    className="flex items-center justify-between gap-4 rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] px-4 py-3.5"
                   >
-                    {/* Station header: label + input chips */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-sm font-semibold text-[#031040] mr-1">{label}</span>
-                      <InputChips inputs={inputs} iconMap={RESOURCE_ICON} blockedKeys={missingSet} />
+                    {/* Part icon + station label with input chips below */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img src={icon} width={60} height={60} alt={output_id} style={{ objectFit: 'contain' }} />
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-[#031040]">{label}</span>
+                        <InputChips inputs={inputs} iconMap={RESOURCE_ICON} blockedKeys={missingSet} />
+                      </div>
                     </div>
-                    {/* Station body: part icon + spinner */}
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={icon}
-                        width={44}
-                        height={44}
-                        alt={output_id}
-                        style={{ objectFit: 'contain', filter: 'grayscale(1)', opacity: 0.75 }}
-                      />
-                      <StationSpinner
-                        active={active}
-                        blocked={blocked}
-                        durationMins={dur}
-                        count={count}
-                        size={68}
-                      />
-                    </div>
+                    <StationStats
+                      count={count}
+                      blocked={blocked}
+                      durationMins={dur}
+                      running={running}
+                      tooltip="Waiting for resources"
+                      ringSize={85}
+                      align="end"
+                      countScale={0.19}
+                    />
                   </div>
                 );
               })}
@@ -256,11 +260,10 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
             className="rounded-xl border border-[#E0E8F8] bg-white p-5"
             style={{ minHeight: 480 }}
           >
-            <h2 className="text-[#2850B8] font-bold text-base mb-4">Robot assembly</h2>
+            <h2 className="text-[#2850B8] font-bold text-base mb-4">Robots Assembled</h2>
             <div className="flex flex-col gap-3">
               {ROBOTS.map(({ id, station_id, label, icon }) => {
                 const count   = assembly_completed[id] ?? 0;
-                const active  = assembly_active[station_id] ?? false;
                 const blocked = station_id in assembly_blocked;
                 const dur     = job_durations[station_id] ?? job_durations[id];
                 const inputs  = assembly_inputs[station_id] ?? {};
@@ -271,28 +274,26 @@ export const Level2Screen: React.FC<LevelScreenProps> = ({ state }) => {
                 return (
                   <div
                     key={id}
-                    className="rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] px-4 py-3"
+                    className="rounded-lg border border-[#E8EFF8] bg-[#F8FAFD] p-4"
                   >
                     {/* Robot header: label + input part chips */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
                       <span className="text-sm font-semibold text-[#031040] mr-1">{label}</span>
                       <InputChips inputs={inputs} iconMap={PART_ICON} blockedKeys={missingSet} />
                     </div>
-                    {/* Robot body: robot icon + spinner */}
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={icon}
-                        width={48}
-                        height={48}
-                        alt={label}
-                        style={{ objectFit: 'contain', filter: 'grayscale(1)', opacity: 0.75 }}
-                      />
-                      <StationSpinner
-                        active={active}
+                    {/* Robot body: robot icon + count, warning and duration */}
+                    <div className="flex items-center justify-between gap-4">
+                      <img src={icon} width={80} height={80} alt={label} style={{ objectFit: 'contain' }} />
+                      <StationStats
+                        count={count}
                         blocked={blocked}
                         durationMins={dur}
-                        count={count}
-                        size={68}
+                        running={running}
+                        tooltip="Waiting for parts"
+                        ringSize={90}
+                        countClass="text-3xl"
+                        align="end"
+                        countScale={0.19}
                       />
                     </div>
                   </div>

@@ -15,7 +15,7 @@ const RESOURCES: { id: string; label: string; icon: string }[] = [
 const STATIONS: { id: string; label: string; icon: string }[] = [
   { id: 'actuator_fabrication',  label: 'Actuator Fabrication', icon: '/icons/svg/parts_actuator.svg' },
   { id: 'battery_assembly',      label: 'Battery Assembly',     icon: '/icons/svg/parts_battery.svg' },
-  { id: 'structural_molding',    label: 'Structural Molding',   icon: '/icons/svg/parts_chassis.svg' },
+  { id: 'structural_molding',    label: 'Chassis Molding',      icon: '/icons/svg/parts_chassis.svg' },
   { id: 'electronics_assembly',  label: 'Electronics Assembly', icon: '/icons/svg/parts_electronics.svg' },
 ];
 

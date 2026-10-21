@@ -21,6 +21,8 @@ export type EventSection = 'gathering' | 'manufacturing' | 'assembly';
 export interface DashboardState {
   stream_health: 'live' | 'stale' | 'awaiting_events';
   active_factory_id: string | null;
+  /** run_id of the most recent event (matches the run_id column in hive_job_durations). */
+  run_id: string | null;
   run_generation: number;
   sim_time_minutes: number;
   lifecycle_status: 'paused' | 'running' | 'stopped' | 'expired';
@@ -45,20 +47,32 @@ export interface DashboardState {
   manufacturing_inputs: Record<string, Record<string, number>>;
   assembly_inputs: Record<string, Record<string, number>>;
 
-  // Latest job durations from the calculated_values Flink topic:
+  // Latest job durations from the hive_job_durations Flink topic:
   // subject (resource_id or station_id) → elapsed_sim_minutes
   job_durations: Record<string, number>;
+
+  // Live inventory balances from the hive_inventory_balances Flink topic (Level 3).
+  // inventory.resource / inventory.part / inventory.robot → item_id → quantity
+  inventory: {
+    resource: Record<string, number>;
+    part: Record<string, number>;
+    robot: Record<string, number>;
+  };
 
   // Recent raw events per section, newest first
   events: Record<EventSection, HiveEvent[]>;
 
-  // True once the calculated_values topic exists (created by the attendee's Flink SQL) (unlocks Level 2)
-  calculated_values_ready: boolean;
+  // True once the hive_job_durations topic exists (created by the attendee's Flink SQL) (unlocks Level 2)
+  hive_job_durations_ready: boolean;
+
+  // True once the hive_inventory_balances topic exists (created by the attendee's Flink SQL) (unlocks Level 3)
+  hive_inventory_balances_ready: boolean;
 }
 
 export const EMPTY_STATE: DashboardState = {
   stream_health: 'awaiting_events',
   active_factory_id: null,
+  run_id: null,
   run_generation: 0,
   sim_time_minutes: 0,
   lifecycle_status: 'paused',
@@ -75,8 +89,10 @@ export const EMPTY_STATE: DashboardState = {
   manufacturing_inputs: {},
   assembly_inputs: {},
   job_durations: {},
+  inventory: { resource: {}, part: {}, robot: {} },
   events: { gathering: [], manufacturing: [], assembly: [] },
-  calculated_values_ready: false,
+  hive_job_durations_ready: false,
+  hive_inventory_balances_ready: false,
 };
 
 /**

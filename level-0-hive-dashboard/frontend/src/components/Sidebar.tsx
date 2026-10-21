@@ -9,6 +9,8 @@ interface SidebarProps {
   onSendCommand: (command: string, extra?: Record<string, unknown>) => Promise<void>;
   levelId: string;
   onLevelChange: (levelId: string) => void;
+  /** False when the level is unlocked but the current run has no data for it yet. */
+  isReady?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,8 +20,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSendCommand,
   levelId,
   onLevelChange,
+  isReady = true,
 }) => {
-  const { stream_health, lifecycle_status, running, sim_time_minutes, active_factory_id } = state;
+  const { stream_health, lifecycle_status, running, sim_time_minutes, active_factory_id, run_id } = state;
   const isLive = stream_health === 'live';
   const isExpired = lifecycle_status === 'expired';
   const isStopped = lifecycle_status === 'stopped';
@@ -27,6 +30,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const hasState = stream_health !== 'awaiting_events' || hasFactory;
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const isUnlocked = level.isUnlocked ? level.isUnlocked(state) : true;
+  // Show sim/restart controls when unlocked; hide sim time until also ready
+  const showControls = isUnlocked;
+  // Show sim time once the sim is running, even before the level has Flink data
+  const showSimTime = isUnlocked && (isReady || state.running);
 
   return (
     <aside
@@ -72,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
 
-          {isUnlocked && (
+          {showControls && (
             <>
             {isExpired && (
               <div className="mb-3 px-3 py-2 rounded text-xs text-amber-300 border border-amber-800 bg-[#2a1800] leading-snug">
@@ -133,8 +140,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </section>
 
-        {/* ── Simulation time (hidden while the level's requirements are shown) ── */}
-        {isUnlocked && (
+        {/* ── Simulation time (hidden while locked or not ready) ── */}
+        {showSimTime && (
           <section>
             <div className="flex items-center gap-2 text-[#8AA0D0] text-xs mb-1">
               <img src="/icons/svg/clock.svg" width={16} height={16} alt="clock" className="opacity-70" />
@@ -148,8 +155,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       </div>
 
-      <div className="border-t border-[#1A2760] px-5 py-3 text-[10px] text-[#4A5A8A]">
+      <div className="border-t border-[#1A2760] px-5 py-3 text-[10px] text-white">
         Closing this app does not pause the hosted factory.
+        {active_factory_id && (
+          <>
+            <hr className="border-t border-white my-2" />
+            <div className="font-bold">Factory ID</div>
+            <div className="font-mono text-[11px] break-all">{active_factory_id}</div>
+          </>
+        )}
+        {run_id && (
+          <>
+            <div className="font-bold mt-2">Run ID</div>
+            <div className="font-mono text-[11px] break-all">{run_id}</div>
+          </>
+        )}
       </div>
     </aside>
   );

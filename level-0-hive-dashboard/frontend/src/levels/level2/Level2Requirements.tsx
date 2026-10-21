@@ -6,8 +6,8 @@ export const Level2Requirements: React.FC = () => (
     <img src="/icons/svg/lock.svg" width={96} height={96} alt="Locked" />
     <h2 className="mt-3 text-2xl font-bold text-[#031040]">Level 2 is locked</h2>
     <p className="mt-2 max-w-xs text-lg text-[#3A4A7A] leading-snug">
-      The <code className="font-mono text-[#031040]">calculated_values</code> topic is not yet
-      available from Confluent.
+      The <code className="font-mono text-[#031040]">hive_job_durations</code> topic is not yet
+      present in Confluent.
     </p>
   </div>
 );

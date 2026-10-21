@@ -22,7 +22,7 @@ interface ProgressRingProps {
  *
  * 2. **Segmented (`segments > 0`)** — one arc-dot per minute (capped at 60),
  *    still animating when `spinning` is true.  The number of segments comes
- *    from `elapsed_sim_minutes` in the `calculated_values` Flink topic.
+ *    from `elapsed_sim_minutes` in the `hive_job_durations` Flink topic.
  */
 export const ProgressRing: React.FC<ProgressRingProps> = ({
   label,

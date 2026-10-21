@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision_topics.sh
 # ───────────────────
-# Creates (or verifies) the 6 Confluent Cloud topics for this attendee.
+# Creates (or verifies) the 10 Confluent Cloud topics for this attendee.
 #
 # Usage:
 #   ./provision_topics.sh
@@ -11,8 +11,8 @@
 #   2. Installs requirements.txt into the venv (idempotent, cached by pip)
 #   3. Runs provision_topics.py inside that venv using certifi for SSL
 #
-# Run from the spec-1-connect-simulation/ directory:
-#   cd spec-1-connect-simulation
+# Run from the level-1-connect-simulation/ directory:
+#   cd level-1-connect-simulation
 #   chmod +x provision_topics.sh
 #   ./provision_topics.sh
 

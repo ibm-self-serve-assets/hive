@@ -20,4 +20,12 @@ export interface LevelDefinition {
    */
   isUnlocked?: (state: DashboardState) => boolean;
   Requirements?: React.FC;
+  /**
+   * Optional readiness check. The level is unlocked (topic exists) but the current
+   * sim run does not yet have data for it. While `isReady(state)` is false the sidebar
+   * hides simulation controls and sim time (same as locked), but the main area shows
+   * the Screen — which is responsible for rendering its own "restart required" prompt.
+   * Omit when no per-run readiness check is needed.
+   */
+  isReady?: (state: DashboardState) => boolean;
 }

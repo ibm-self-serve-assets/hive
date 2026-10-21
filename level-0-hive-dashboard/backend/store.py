@@ -8,7 +8,7 @@ Tracks only what the design comp needs:
   - in-progress flags    from *.started / *.completed pairing
   - blocked state        from *.blocked event payloads
   - station inputs       from *.started event payloads (full recipe inputs)
-  - job durations        from calculated_values topic (elapsed_sim_minutes per station)
+  - job durations        from hive_job_durations topic (elapsed_sim_minutes per station)
   - stream health
 """
 
@@ -44,6 +44,8 @@ class DashboardStore:
     def __init__(self) -> None:
         self.active_factory_id: Optional[str] = None
         self.server_epoch: Optional[str] = None
+        # run_id of the most recent event; matches the run_id column in hive_job_durations
+        self.run_id: Optional[str] = None
 
         # sim time — updated from every envelope
         self.latest_sim_time_minutes: int = 0
@@ -78,16 +80,26 @@ class DashboardStore:
         self.manufacturing_inputs: Dict[str, Dict[str, int]] = {}
         self.assembly_inputs: Dict[str, Dict[str, int]] = {}
 
-        # Job durations from calculated_values (Flink output):
+        # Job durations from hive_job_durations (Flink output):
         # subject (resource_id / station_id) → latest elapsed_sim_minutes
         self.job_durations: Dict[str, int] = {}
+
+        # Inventory balances from hive_inventory_balances (Flink output), kept per run
+        # because the topic retains rows from earlier runs:
+        # run_id → item_type → item_id → quantity.  item_type: 'resource' | 'part' | 'robot'
+        # Independent of reset(): rows can arrive before the new run's first event does.
+        self.inventory_by_run: Dict[str, Dict[str, Dict[str, int]]] = {}
 
         # Recent events per section, newest first (raw envelopes for the event panels)
         self.events: Dict[str, list] = {c: [] for c in EVENT_LOG_CATEGORIES}
 
-        # Level 2 gate: the calculated_values topic exists (created by the attendee's Flink SQL).
+        # Level 2 gate: the hive_job_durations topic exists (created by the attendee's Flink SQL).
         # Independent of the factory run, so reset() leaves it alone.
-        self.calculated_values_ready: bool = False
+        self.hive_job_durations_ready: bool = False
+
+        # Level 3 gate: the hive_inventory_balances topic exists.
+        # Independent of the factory run, so reset() leaves it alone.
+        self.hive_inventory_balances_ready: bool = False
 
         # Dedup
         self._seen_ids: Dict[str, None] = {}
@@ -96,6 +108,7 @@ class DashboardStore:
     def reset(self) -> None:
         self.latest_sim_time_minutes = 0
         self.run_generation = 0
+        self.run_id = None
         self.lifecycle_status = "paused"
         self.running = False
         self.gathering_completed = {r: 0 for r in RESOURCE_IDS}
@@ -151,6 +164,8 @@ class DashboardStore:
         elif env.sim_time_minutes > self.latest_sim_time_minutes:
             self.latest_sim_time_minutes = env.sim_time_minutes
         self._last_event_mono = time.monotonic()
+        if env.run_id:
+            self.run_id = env.run_id
 
         et = env.event_type
         p = env.payload
@@ -250,6 +265,25 @@ class DashboardStore:
         self.job_durations[subject] = elapsed_sim_minutes
         return True
 
+    def ingest_inventory_balance(self, run_id: str, item_type: str, item_id: str, quantity: int) -> bool:
+        """Update the live inventory balance for one item of one run.
+
+        Returns True only if the value belongs to the current run and changed what is shown.
+        """
+        if item_type not in ("resource", "part", "robot"):
+            return False
+        run = self.inventory_by_run.setdefault(
+            run_id, {"resource": {}, "part": {}, "robot": {}}
+        )
+        run[item_type][item_id] = quantity
+        return run_id == self.run_id
+
+    @property
+    def inventory(self) -> Dict[str, Dict[str, int]]:
+        """Balances for the current run."""
+        empty: Dict[str, Dict[str, int]] = {"resource": {}, "part": {}, "robot": {}}
+        return self.inventory_by_run.get(self.run_id, empty) if self.run_id else empty
+
     def get_stream_health(self) -> str:
         if self._last_event_mono == 0.0:
             return "awaiting_events"
@@ -260,6 +294,7 @@ class DashboardStore:
         return {
             "stream_health": self.get_stream_health(),
             "active_factory_id": self.active_factory_id,
+            "run_id": self.run_id,
             "run_generation": self.run_generation,
             "sim_time_minutes": self.latest_sim_time_minutes,
             "lifecycle_status": self.lifecycle_status,
@@ -276,6 +311,8 @@ class DashboardStore:
             "manufacturing_inputs": {k: dict(v) for k, v in self.manufacturing_inputs.items()},
             "assembly_inputs": {k: dict(v) for k, v in self.assembly_inputs.items()},
             "job_durations": dict(self.job_durations),
+            "inventory": {k: dict(v) for k, v in self.inventory.items()},
             "events": {c: list(evs) for c, evs in self.events.items()},
-            "calculated_values_ready": self.calculated_values_ready,
+            "hive_job_durations_ready": self.hive_job_durations_ready,
+            "hive_inventory_balances_ready": self.hive_inventory_balances_ready,
         }

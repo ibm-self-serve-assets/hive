@@ -12,9 +12,9 @@ export const FlowDots: React.FC<FlowDotsProps> = ({ running = true }) => {
   return (
     <div
       className="flex items-center justify-center select-none"
-      style={{ width: '48px', flexShrink: 0, marginTop: '200px' }}
+      style={{ width: '32px', flexShrink: 0, marginTop: '163px' }}
     >
-      <div className="flex gap-1.5">
+      <div className="flex gap-1">
         {Array.from({ length: numDots }, (_, i) => {
           const delay = (i * cycleSeconds) / numDots;
           return (

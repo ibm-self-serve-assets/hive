@@ -14,16 +14,18 @@ from pydantic import BaseModel
 
 from backend.config import BackendConfig
 from backend.store import DashboardStore
-from backend.consumer import EventConsumerManager, CalculatedValuesConsumer
-from backend.topic_watch import CalculatedValuesWatcher
+from backend.consumer import EventConsumerManager, CalculatedValuesConsumer, InventoryBalancesConsumer
+from backend.topic_watch import CalculatedValuesWatcher, InventoryBalancesWatcher
 
 logger = logging.getLogger("hive.backend")
 
 config: BackendConfig = BackendConfig.load_from_env()
 store: DashboardStore = DashboardStore()
 consumer_mgr: Optional[EventConsumerManager] = None
-calculated_values_watcher: Optional[CalculatedValuesWatcher] = None
-calculated_values_consumer: Optional[CalculatedValuesConsumer] = None
+hive_job_durations_watcher: Optional[CalculatedValuesWatcher] = None
+hive_job_durations_consumer: Optional[CalculatedValuesConsumer] = None
+hive_inventory_balances_watcher: Optional[InventoryBalancesWatcher] = None
+hive_inventory_balances_consumer: Optional[InventoryBalancesConsumer] = None
 csrf_token: str = secrets.token_hex(16)
 subscribers: List[asyncio.Queue] = []
 
@@ -39,7 +41,9 @@ async def notify_subscribers(snap: Dict[str, Any]):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global consumer_mgr, csrf_token, calculated_values_watcher, calculated_values_consumer
+    global consumer_mgr, csrf_token, \
+        hive_job_durations_watcher, hive_job_durations_consumer, \
+        hive_inventory_balances_watcher, hive_inventory_balances_consumer
     csrf_token = secrets.token_hex(16)
 
     consumer_mgr = EventConsumerManager(
@@ -54,29 +58,51 @@ async def lifespan(app: FastAPI):
     async def _notify_state():
         await notify_subscribers(store.snapshot())
 
-    calculated_values_watcher = CalculatedValuesWatcher(
+    hive_job_durations_watcher = CalculatedValuesWatcher(
         store=store,
         bootstrap_servers=config.confluent_bootstrap_server,
         api_key=config.confluent_api_key,
         api_secret=config.confluent_api_secret,
         on_change=_notify_state,
     )
-    calculated_values_watcher.start()
+    hive_job_durations_watcher.start()
 
-    calculated_values_consumer = CalculatedValuesConsumer(
+    hive_job_durations_consumer = CalculatedValuesConsumer(
         store=store,
         bootstrap_servers=config.confluent_bootstrap_server,
         api_key=config.confluent_api_key,
         api_secret=config.confluent_api_secret,
         on_change=_notify_state,
     )
-    calculated_values_consumer.start()
+    hive_job_durations_consumer.start()
+
+    hive_inventory_balances_watcher = InventoryBalancesWatcher(
+        store=store,
+        bootstrap_servers=config.confluent_bootstrap_server,
+        api_key=config.confluent_api_key,
+        api_secret=config.confluent_api_secret,
+        on_change=_notify_state,
+    )
+    hive_inventory_balances_watcher.start()
+
+    hive_inventory_balances_consumer = InventoryBalancesConsumer(
+        store=store,
+        bootstrap_servers=config.confluent_bootstrap_server,
+        api_key=config.confluent_api_key,
+        api_secret=config.confluent_api_secret,
+        on_change=_notify_state,
+    )
+    hive_inventory_balances_consumer.start()
 
     asyncio.create_task(auto_connect())
     yield
-    calculated_values_watcher.stop()
-    if calculated_values_consumer:
-        calculated_values_consumer.stop()
+    hive_job_durations_watcher.stop()
+    if hive_job_durations_consumer:
+        hive_job_durations_consumer.stop()
+    if hive_inventory_balances_watcher:
+        hive_inventory_balances_watcher.stop()
+    if hive_inventory_balances_consumer:
+        hive_inventory_balances_consumer.stop()
     if consumer_mgr:
         consumer_mgr.stop()
 

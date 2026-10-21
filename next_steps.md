@@ -7,7 +7,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
 - **Levels Organization**:
   - `level-0-hive-dashboard/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, factory controls, auto-connection.
   - `level-1-connect-simulation/`: Topic provisioning, raw event connectivity, and foundational simulation controls.
-  - `level-2-implement-flink/`: Confluent Flink interval joins, job durations correlation (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`).
+  - `level-2-intro-to-flink/`: Confluent Flink interval joins, job durations correlation (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`).
   - `backup_ui/`: Archived Level 3 prototype (real-time inventory reconciliation, material ledgers, Flink balances, Tableflow sync). Reference only — superseded by `level-0-hive-dashboard/`.
 - **Simulation Server**: In `simulation-instructor-only/` (memory-only, instructor-managed authority).
 
@@ -16,7 +16,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
 - **Keep the levels current.** Whenever the simulation, attendee backend/frontend code, or Flink SQL changes, update the matching level `.md` files in the same change:
   - `simulation-instructor-only/` specifications and README
   - `level-1-connect-simulation/` README and provisioning scripts
-  - `level-2-implement-flink/` README and SQL comments
+  - `level-2-intro-to-flink/` README and SQL comments
   - `backup_ui/` (archived — no active maintenance required)
   - `level-0-hive-dashboard/` (single unified frontend and backend)
 - **Audience.**
@@ -36,10 +36,11 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 
 | Item | Status |
 |---|---|
-| `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). 13 tests pass; `tests/test_api.py` fails at import (`ModuleNotFoundError: No module named 'topics'`), not yet investigated. |
-| `level-0-hive-dashboard/` | **Unified UI installed**. Backend and frontend running in unified structure with Level 1-3 support. |
-| `level-1-connect-simulation/` | **Verified working**. Provisioning scripts, raw event streams, and real-time dashboard controls functional. |
-| `level-2-implement-flink/` | **Verified deployed** in Confluent Cloud. Tables, jobs, and validation passing (`calculated_values` stream join). |
+| `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). All 18 tests pass, including `tests/test_api.py` (run `python3 -m pytest` from this folder; `pytest.ini` puts `spec-shared` on the path). |
+| `level-0-hive-dashboard/` | **Unified UI installed**. Levels 1–3 screens, inventory strips, spinners, blocked state, FlowDots, URL hash routing. Level 2 `isReady` gate shows "New simulation run required" / "Waiting for Flink…" prompt when stale. Schema Registry 5-byte magic prefix stripped in both Flink topic consumers. |
+| `level-1-connect-simulation/` | **Complete.** Provisioning scripts, raw event streams, and real-time dashboard controls functional. `requirements.txt` restored (the rename had moved it to the dashboard backend, so both scripts failed); README now has the `hive_dev` environment setup step and a link to Level 2. |
+| `level-2-intro-to-flink/` | **Complete.** Verified deployed in Confluent Cloud. Tables, jobs, and validation passing (`hive_job_durations` stream join). README links and step lettering fixed. |
+| `level-3-hive-inventory/` | **Flink SQL written** (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`). CLI-first README done. Dashboard Level 3 screen built and gated on `hive_inventory_balances` topic. |
 | `backup_ui/` | Archived Level 3 prototype. Superseded by `level-0-hive-dashboard/`. |
 
 ## Simulation scheduling: cart / staging logic (done)
@@ -89,20 +90,22 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 - [x] Levels dropdown with Level 1 only; Level 1 uses the current UI.
 - [x] Screen-per-level framework (`levels/types.ts`, `levels/registry.ts`, `levels/level1/`).
 - [x] Level 2 added to the dropdown as a copy of Level 1.
-- [x] Decide what each of Levels 2 and 3 adds to the UI (Level 2: job durations + blocked state + input chips from the Flink `calculated_values` stream; Level 3: ledger and balances). `levels/level2/` built.
-- [ ] Fold `backup_ui/frontend`'s own `ManufacturingFloor.tsx` into `levels/level3/`, so there is one frontend.
-- [x] Level 2 gate: while the `calculated_values` topic does not exist, the main area of Level 2 shows a centred lock message (`levels/level2/Level2Requirements.tsx`, icon `public/icons/svg/lock.svg`) instead of the Level 2 screen, and the sidebar hides the simulation buttons and Simulation Time. Only the Levels dropdown and the connection status remain. A level opts in via optional `isUnlocked` and `Requirements` on its `LevelDefinition`. The backend (`backend/topic_watch.py`, `CalculatedValuesWatcher`) polls Confluent for the existence of the `calculated_values` topic and sets `calculated_values_ready` in the dashboard snapshot. It stays set once true. It only lists topics; it never reads records, and the topic is empty until the simulation runs.
-- [ ] Gate Level 3 the same way (needs its own topic or signal), and add the matching validation tests (roadmap item 4).
+- [x] Decide what each of Levels 2 and 3 adds to the UI (Level 2: job durations + blocked state + input chips from the Flink `hive_job_durations` stream; Level 3: ledger and balances). `levels/level2/` built.
+- [x] Fold Level 3 into `levels/level3/` — `Level3Screen.tsx` and `Level3Requirements.tsx` built directly in the unified dashboard; `backup_ui/` is archived reference only.
+- [x] Level 2 gate: while the `hive_job_durations` topic does not exist, the main area of Level 2 shows a centred lock message (`levels/level2/Level2Requirements.tsx`, icon `public/icons/svg/lock.svg`) instead of the Level 2 screen, and the sidebar hides the simulation buttons and Simulation Time. Only the Levels dropdown and the connection status remain. A level opts in via optional `isUnlocked` and `Requirements` on its `LevelDefinition`. The backend (`backend/topic_watch.py`, `CalculatedValuesWatcher`) polls Confluent for the existence of the `hive_job_durations` topic and sets `hive_job_durations_ready` in the dashboard snapshot. It stays set once true. It only lists topics; it never reads records, and the topic is empty until the simulation runs.
+- [x] Gate Level 3 the same way: `hive_inventory_balances` topic existence sets `hive_inventory_balances_ready`; `Level3Requirements.tsx` shown until unlocked. Backend: `InventoryBalancesWatcher` + `InventoryBalancesConsumer` in `topic_watch.py` / `consumer.py`.
 - [x] Persist the selected level: URL hash routing (`#level-1`, `#level-2`). A page refresh restores the level; browser back/forward buttons work. `localStorage` fallback not needed.
 - [x] Level 2: dotted flow line (`components/FlowDots.tsx`) wired between the three lanes, animated when `state.running` is true.
 - [x] Level 1 + Level 2: event panels start **collapsed** by default. The count badge in the header always shows the running total, so attendees see activity without the panels obscuring the main content. Click to expand.
+- [x] Level 2 `isReady` gate: a second predicate on `LevelDefinition` (`isReady`) hides sim time and shows a contextual prompt when the level is unlocked but the current run has no Flink data yet. While `running` is true the prompt reads "Waiting for Flink…"; before restart it reads "New simulation run required". Sim time reappears as soon as `running` is true; floor UI appears once `job_durations` has data.
+- [x] Schema Registry wire format fix: `hive_job_durations` and `hive_inventory_balances` use `json-registry` (Confluent Schema Registry JSON format). Records are prefixed with a 5-byte magic header (`0x00` + 4-byte schema ID). Both `CalculatedValuesConsumer` and `InventoryBalancesConsumer` now strip this prefix before JSON parsing. Previously the parse silently failed at `DEBUG` level, so no records were ever ingested.
 
-- [ ] `calculated_values` is the single Flink output topic for all derived values (job durations first, more later). Its table is still shaped for job durations only (`01_create_sink.sql`). Before adding a second kind of value, decide on a shared shape, for example a `metric` column plus per-metric columns, and keep changelog mode `append`. Tableflow cannot change the mode later.
+- **Two Flink output topics are now the design:** `hive_job_durations` (append, durations) and `hive_inventory_balances` (upsert, live stock levels). These are intentionally separate — different changelog modes, different consumers, different dashboard levels. Do not merge them.
 
 ## Simulation notes: assembly and `duration_ms`
 
 - `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `factory.state`, so it now requires 6 stations.
-- `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `calculated_values` join does).
+- `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `hive_job_durations` join does).
 - Restart the simulation and the dashboard backend to pick these changes up.
 - To check: the Level 3 backend and frontend with a sixth station.
 
@@ -118,7 +121,11 @@ Do not copy recipe quantities, delivery intervals or durations into these notes.
 1. [x] **Unified Dashboard Scaffolding**: Moved backend and frontend to the unified dashboard (now `level-0-hive-dashboard/`).
 2. [x] **Folder Renaming**: Renamed `spec-1/2/3-*` to `level-1/2/3-*`; unified dashboard folder is `level-0-hive-dashboard/`.
 3. [x] **Cart / Staging Logic**: Incremental per-station staging for manufacturing and robot assembly (see above).
-4. [ ] **Level Selector & Validation Hook**: The dropdown is done (see Mission above). Still open: automated validation tests that confirm the attendee can run the selected level and warn otherwise (backend validation endpoint for level progress gates).
-5. [ ] **Ledger & Balances Flink SQL (`level-2` / `level-3`)**: Write attendee SQL for material ledgers and stateful balances in Confluent Cloud.
-6. [ ] **Tableflow Runbook**: Iceberg sync and data lakehouse integration instructions.
-7. [ ] **Fix `simulation-instructor-only/tests/test_api.py`**: import error on `topics`.
+4. [ ] **Level Selector & Validation Hook**: The dropdown is done (see Mission above). `isReady` per-run gate added to `LevelDefinition`. Still open: automated validation tests that confirm the attendee can run the selected level and warn otherwise (backend validation endpoint for level progress gates).
+5. [x] **Inventory Flink SQL (`level-3-hive-inventory/`)**: `hive_inventory_balances` upsert topic. Three jobs: resources, parts, robots. CLI-first README done.
+6. [ ] **Tableflow Runbook**: Iceberg sync and data lakehouse integration instructions for both `hive_job_durations` and `hive_inventory_balances`.
+7. [x] **Fix `simulation-instructor-only/tests/test_api.py`**: import error on `topics`. Cause: `topics.py` lives in `spec-shared/`, which only `start_server.sh` added to `PYTHONPATH`. Fixed with `simulation-instructor-only/pytest.ini` (`pythonpath = . ../spec-shared`).
+
+## Pending UI decisions
+
+- **Progress spinner style**: `SegmentRingLegacy` in `level-0-hive-dashboard/frontend/src/components/StationStats.tsx` is the old arc-segment ring kept as backup. The active spinner is `DotSpinner` (12-dot comet style). **Delete `SegmentRingLegacy` once the new spinner is confirmed.**

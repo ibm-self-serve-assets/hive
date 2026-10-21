@@ -18,6 +18,7 @@ export const App: React.FC = () => {
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const { Screen, Requirements } = level;
   const isUnlocked = level.isUnlocked ? level.isUnlocked(state) : true;
+  const isReady = isUnlocked && (level.isReady ? level.isReady(state) : true);
   const [isCommandPending, setIsCommandPending] = useState(false);
 
   // Keep hash in sync when levelId changes programmatically (dropdown)
@@ -151,6 +152,7 @@ export const App: React.FC = () => {
           onSendCommand={handleSendCommand}
           levelId={levelId}
           onLevelChange={handleLevelChange}
+          isReady={isReady}
         />
         <main className="flex-1 min-h-0 overflow-auto">
           {isUnlocked ? <Screen state={state} /> : Requirements ? <Requirements /> : null}
