@@ -43,8 +43,7 @@ The workshop then extends in three planned levels. Level 4 materializes the deri
 
 | Level | Attendee activity | Learning outcome | Repository status |
 |---|---|---|---|
-| Level 0 — Set up | Create the `hive_dev` Confluent Cloud environment, configure `spec-shared/.env`, launch the unified dashboard | Understand the components and connection points | Setup guide and application supplied |
-| Level 1 — Connect | Provision the 10 factory topics, start the factory, observe events | See producer/consumer decoupling in action | Code and guided steps supplied |
+| Level 1 — Set up and connect | Create the `hive_dev` Confluent Cloud environment, configure `spec-shared/.env`, provision the factory topics, launch the unified dashboard, start the factory and observe events | Understand the components and connection points; see producer/consumer decoupling in action | Setup guide, scripts and application supplied |
 | Level 2 — Intro to Flink | Create a Flink compute pool and deploy interval joins in the Confluent Cloud SQL workspace | Turn separate lifecycle events into job-duration facts (`hive_job_durations`, append) | Sink, processing, and validation SQL supplied; dashboard view supplied |
 | Level 3 — Hive Inventory | Install the Confluent CLI and deploy stateful aggregations | Maintain live stock levels for resources, parts, and robots (`hive_inventory_balances`, upsert) | Sink, processing, and validation SQL supplied; dashboard view supplied |
 | Level 4 — Tableflow | Materialize `hive_job_durations` and `hive_inventory_balances` as Apache Iceberg tables | Extend streams into lakehouse analytics without a separate pipeline | Planned; folder created, runbook not yet written |
@@ -53,8 +52,7 @@ The workshop then extends in three planned levels. Level 4 materializes the deri
 
 ### What each completed level provides
 
-- **Level 0** — The attendee creates a `hive_dev` environment with a Kafka cluster, an API key and Stream Governance Essentials (which enables Schema Registry for Levels 2 and 3). They fill in `spec-shared/.env` and start the FastAPI backend (port 8001) and the React frontend (port 5174). The backend builds its view only from Kafka events; there is no factory database to query.
-- **Level 1** — A script provisions the 10 topics defined in `spec-shared/schemas/event_payloads.json`, and it is safe to run more than once. Running the factory advances the simulation clock (1 real second = 1 simulated minute) and shows live counters and flow animations.
+- **Level 1** — The attendee creates a `hive_dev` environment with a Kafka cluster, an API key and Stream Governance Essentials (which enables Schema Registry for Levels 2 and 3). They fill in `spec-shared/.env` and start the FastAPI backend (port 8001) and the React frontend (port 5174). The backend builds its view only from Kafka events; there is no factory database to query. A script provisions the topics defined in `spec-shared/schemas/event_payloads.json`, and it is safe to run more than once. The dashboard's Level 1 view stays locked until every one of those topics exists. Running the factory advances the simulation clock (1 real second = 1 simulated minute) and shows live counters and flow animations.
 - **Level 2** — Three continuous interval joins pair `*.started` and `*.completed` events by `job_id` and write elapsed simulated minutes and wall-clock seconds to `hive_job_durations`. The dashboard's Level 2 view stays locked until that topic exists, then shows a segmented progress ring on each station sized to its job duration.
 - **Level 3** — Three parallel aggregation jobs compute resources (gathered minus consumed at manufacturing start), parts (manufactured minus consumed at assembly start), and robots (accumulate only). Output is an upsert changelog with one current row per item. The dashboard's Level 3 view unlocks once `hive_inventory_balances` exists, adds resource, parts, and robot inventory strips, and reuses the Level 2 progress rings.
 
@@ -65,18 +63,18 @@ The workshop then extends in three planned levels. Level 4 materializes the deri
 
 ## Review notes and source references
 
-Reviewed against the working tree on top of repository commit `9bc9e7787fdff29ea811f9b55382b5d6b08f9ed3` on October 20, 2026 (Pacific time). Level 3 and the renamed Level 2 folder were still uncommitted at the time of review, so links below are repo-relative rather than pinned to a commit. This review examined the Level 0–3 READMEs, the dashboard level registry and the working notes; it did not run a live cloud deployment.
+Reviewed against the working tree on top of repository commit `9bc9e7787fdff29ea811f9b55382b5d6b08f9ed3` on October 20, 2026 (Pacific time). Level 3 and the renamed Level 2 folder were still uncommitted at the time of review, so links below are repo-relative rather than pinned to a commit. This review examined the Level 1–3 READMEs, the dashboard level registry and the working notes; it did not run a live cloud deployment.
 
-The unified frontend registers Levels 1, 2 and 3, with Levels 2 and 3 each gated on their Flink output topic existing. Working notes still list automated level-validation gates as open work. `level-4-tableflow/` exists but is empty, and no folders or documents exist yet for Levels 5 and 6, so the descriptions of those levels above reflect the planned direction and not implemented code. Some older guides and the Level 2 README's topic and resource examples (pollen, nectar, wax, frames, honeycombs) do not match the current factory, which uses copper, energy, metals, resin and silicon, with chassis, electronics, actuator and battery parts. The copy above follows current source behavior where these disagree. The architecture diagram image has not yet been updated to show Levels 4–6.
+The unified frontend registers Levels 1, 2 and 3, with Level 1 gated on the event topics and Levels 2 and 3 each gated on their Flink output topic existing. Working notes still list automated level-validation gates as open work. `level-4-tableflow/` exists but is empty, and no folders or documents exist yet for Levels 5 and 6, so the descriptions of those levels above reflect the planned direction and not implemented code. Some older guides and the Level 2 README's topic and resource examples (pollen, nectar, wax, frames, honeycombs) do not match the current factory, which uses copper, energy, metals, resin and silicon, with chassis, electronics, actuator and battery parts. The copy above follows current source behavior where these disagree. The architecture diagram image has not yet been updated to show Levels 4–6.
 
 Primary sources:
 
-- [Level 0 setup](level-0-hive-dashboard/README.md)
-- [Level 1 connectivity](level-1-connect-simulation/README.md)
+- [Level 1 setup](level-1-environment-setup/README.md)
+- [Run your simulation (Level 1, Step 8)](level-1-environment-setup/README.md#step-8-run-your-simulation)
 - [Level 2 Flink exercises](level-2-intro-to-flink/README.md)
 - [Level 2 processing SQL](level-2-intro-to-flink/flink/02_run_jobs.sql)
 - [Level 3 inventory exercises](level-3-hive-inventory/README.md)
 - [Level 3 processing SQL](level-3-hive-inventory/flink/02_run_jobs.sql)
-- [Dashboard backend](level-0-hive-dashboard/backend/app.py)
-- [Current level registry](level-0-hive-dashboard/frontend/src/levels/registry.ts)
+- [Dashboard backend](level-1-environment-setup/backend/app.py)
+- [Current level registry](level-1-environment-setup/frontend/src/levels/registry.ts)
 - [Working notes and roadmap](next_steps.md)

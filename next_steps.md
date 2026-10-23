@@ -2,26 +2,26 @@
 
 Running notes for us as the work progresses. Not for attendees or instructors.
 
-- **Unified Dashboard Architecture**: Single UI install in `level-0-hive-dashboard/` with dropdown for Level 0, Level 1, Level 2, Level 3 progression.
+- **Unified Dashboard Architecture**: Single UI install in `level-1-environment-setup/` with dropdown for Level 1, Level 2, Level 3 progression.
 - **Automated Validation**: Tests validate that attendees have completed steps for the selected level to function.
 - **Levels Organization**:
-  - `level-0-hive-dashboard/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, factory controls, auto-connection.
-  - `level-1-connect-simulation/`: Topic provisioning, raw event connectivity, and foundational simulation controls.
+  - `level-1-environment-setup/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, factory controls, auto-connection.
   - `level-2-intro-to-flink/`: Confluent Flink interval joins, job durations correlation (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`).
-  - `backup_ui/`: Archived Level 3 prototype (real-time inventory reconciliation, material ledgers, Flink balances, Tableflow sync). Reference only — superseded by `level-0-hive-dashboard/`.
+  - `level-3-hive-inventory/`: Flink stateful aggregations into the `hive_inventory_balances` upsert topic.
+  - `level-4-gamify/` (empty) and `level-5-tableflow/` (empty): folders created, nothing written yet. See "Level numbering" below.
+  - `backup_ui/`: Archived Level 3 prototype (real-time inventory reconciliation, material ledgers, Flink balances, Tableflow sync). Reference only — superseded by `level-1-environment-setup/`.
 - **Simulation Server**: In `simulation-instructor-only/` (memory-only, instructor-managed authority).
 
 ## Working agreements
 
 - **Keep the levels current.** Whenever the simulation, attendee backend/frontend code, or Flink SQL changes, update the matching level `.md` files in the same change:
   - `simulation-instructor-only/` specifications and README
-  - `level-1-connect-simulation/` README and provisioning scripts
   - `level-2-intro-to-flink/` README and SQL comments
   - `backup_ui/` (archived — no active maintenance required)
-  - `level-0-hive-dashboard/` (single unified frontend and backend)
+  - `level-1-environment-setup/` (README, topic provisioning scripts in `scripts/`, single unified frontend and backend)
 - **Audience.**
-  - **Simulation server (`simulation-instructor-only`) is written for instructors.** It describes hidden state, server internals, and the answer key.
-  - **Levels 0, 1, 2, 3 are written for attendees.** They do not reveal the simulation's hidden counters or internals.
+  - **Simulation server (`simulation-instructor-only`, including `orders-calculator/`) is written for instructors.** It describes hidden state, server internals, and the answer key.
+  - **Levels 0, 1, 2, 3 (and the Level 4 screen) are written for attendees.** They do not reveal the simulation's hidden counters or internals.
 - **Hidden internal state stays out of the payloads.** Attendees receive only the events and the `factory.state` snapshot as currently defined in `spec-shared/schemas/event_payloads.json`. The simulation's internal counters (for example the per-station staging carts, see below) are not added to any event or snapshot, and are not recomputed in the attendee dashboard backend either. Do not add fields such as `staged_inputs` to the schema, the models, or the dashboard.
 - **One source of truth.** Don't duplicate values that live in `simulation_rules.json` or `event_payloads.json` in notes or docs; point to the file instead.
 - **Attendee SQL is run in the Confluent Flink workspace, one statement per run.** Prefer a small number of files that each run once.
@@ -37,11 +37,65 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 | Item | Status |
 |---|---|
 | `simulation-instructor-only/` | **Cart / staging logic implemented** (see below). All 18 tests pass, including `tests/test_api.py` (run `python3 -m pytest` from this folder; `pytest.ini` puts `spec-shared` on the path). |
-| `level-0-hive-dashboard/` | **Unified UI installed**. Levels 1–3 screens, inventory strips, spinners, blocked state, FlowDots, URL hash routing. Level 2 `isReady` gate shows "New simulation run required" / "Waiting for Flink…" prompt when stale. Schema Registry 5-byte magic prefix stripped in both Flink topic consumers. |
-| `level-1-connect-simulation/` | **Complete.** Provisioning scripts, raw event streams, and real-time dashboard controls functional. `requirements.txt` restored (the rename had moved it to the dashboard backend, so both scripts failed); README now has the `hive_dev` environment setup step and a link to Level 2. |
+| `level-1-environment-setup/` | **Unified UI installed**. Levels 1–3 screens, inventory strips, spinners, blocked state, FlowDots, URL hash routing. Level 2 `isReady` gate shows "New simulation run required" / "Waiting for Flink…" prompt when stale. Schema Registry 5-byte magic prefix stripped in both Flink topic consumers. |
 | `level-2-intro-to-flink/` | **Complete.** Verified deployed in Confluent Cloud. Tables, jobs, and validation passing (`hive_job_durations` stream join). README links and step lettering fixed. |
 | `level-3-hive-inventory/` | **Flink SQL written** (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`). CLI-first README done. Dashboard Level 3 screen built and gated on `hive_inventory_balances` topic. |
-| `backup_ui/` | Archived Level 3 prototype. Superseded by `level-0-hive-dashboard/`. |
+| Level 4 dashboard screen (`levels/level4/`) | **In progress, uncommitted.** Orders and treasury sidebar, per-station add/upgrade controls, coins = robots sold × price − spent. Purchases are tracked client-side only (`Level4Context.tsx`); the server does not know about them. Gated on `hive_inventory_balances` like Level 3. |
+| `simulation-instructor-only/orders-calculator/` | **Calculator done, not integrated.** Analytical capacity model, greedy upgrade simulator and order schedule generator. 7 tests pass (the whole suite is 25). Nothing in `server/` uses it. See `orders_calculator.md`. |
+| `backup_ui/` | Archived Level 3 prototype. Superseded by `level-1-environment-setup/`. |
+
+## Level numbering (needs a decision)
+
+The docs and the dashboard disagree:
+
+- `Hive_Workshop_Overview.md` plans **Level 4 = Tableflow**, Level 5 = headless agent and IBM Bob, Level 6 = Bob runs the factory.
+- The dashboard's **Level 4** is the gamified orders / treasury screen, and the folders on disk are `level-4-gamify/` and `level-5-tableflow/`.
+
+Pick one numbering and update the overview, the folder names, the registry label and the Tableflow roadmap item together.
+
+## Event and snapshot additions (uncommitted)
+
+Both are in `spec-shared/schemas/event_payloads.json`:
+
+- `manufacturing.resources.acquired` and `assembly.parts.acquired`: emitted each time a station's cart receives a delta of inputs. They carry only the delta (`inputs_grabbed`), not the cart total, so the hidden-cart rule still holds. The dashboard backend (`store.py`) accepts them with no state change. Check that they are included in `provision_topics` / `delete_topics` for Level 1 and in the Level 1 docs.
+- `debug_mode_instructor_only` on `factory.state`: ground-truth inventory, `null` unless the instructor turns debug mode on in `/admin`. It violates "hidden state stays out of the payloads" when on, so it must stay off in workshops. `store.py` already reads it to bypass Flink inventory. Document this in `INSTRUCTOR_GUIDE.md`.
+- `simulation_rules.json` gained `simulation_time.max_sim_weeks` (2). The server (`rules.py`) and the orders calculator both read it.
+
+## Orders calculator (new)
+
+`simulation-instructor-only/orders-calculator/` (docs in `orders_calculator.md`) computes what the factory can produce and builds an order schedule from it. Key results with the current rules:
+
+- The energy supply is a hard cap on throughput (about 65 robots per sim day). Every station maxed, so no purchase plan beats it.
+- Greedy-optimal play reaches that cap at sim minute 929 (about 15.5 sim hours; 15.5 real minutes at 1x). Output is flat after that.
+- The calculator is an analytical model. It has not been compared with a real run.
+- Timing: the sim clock is 1 real second = 1 sim minute, so 2 sim weeks (20,160 sim minutes) take **5.6 real hours** and 1 sim week takes 2.8 hours. There is no 5x speed in `server/` yet.
+
+### Design decision: the simulation tracks orders, not purchases
+
+- **The server owns orders.** Station purchases and upgrades are not a simulation concern (the dashboard keeps its own coin spending).
+- **`placeOrder()`** runs at points computed with the logic in `calculator.py` (`OrderScheduleGenerator` and the capacity model). It emits an order-placed event.
+- **`fulfillOrder()`** runs automatically whenever a robot is assembled. Orders are always present to accept the robot, so every robot is sold the moment it is built. It emits an order-fulfilled event with the **robot type** and the **coins received** (price from `robot_metadata` in `simulation_rules.json`, so the price is not duplicated).
+- **Event names.** The brief says "order-placed" and "order-fulfilled". Existing events use dotted names (`manufacturing.resources.acquired`), so confirm `order.placed` / `order.fulfilled` before adding them to `event_payloads.json`, `provision_topics.sh` and `topics.py`.
+- **Open conflict.** "An order is always present" removes the deadline pressure that `OrderScheduleGenerator` produces (`deadline_sim_minute`, 60/80/95% difficulty). Decide what an order now is: a standing demand slot whose `placeOrder()` timing keeps one open at all times, or a deadline order that can expire. The generator needs to change either way.
+
+### Dashboard: replace Robot inventory with Orders and Treasury (Level 4 screen)
+
+On the Level 4 screen (`levels/level4/Level4Screen.tsx`), the **Robot inventory** panel above **Robot assembly** must be replaced by **Orders** and **Treasury**.
+
+- Move the Orders and Treasury sections out of the left sidebar (`components/Sidebar.tsx`, the "Level 4 Orders & Treasury" block) into that slot, then delete them from the sidebar.
+- Delete the Robot-inventory code from Level 4: the panel, the `ROBOTS` inventory rendering and the `useLevel4` coin lookup in the sidebar.
+- Drive Orders and Treasury from the new events, not from `state.inventory.robot`. Coins earned are the sum of `coins` in the order-fulfilled events, and spending stays in `Level4Context.tsx` (`coins = earned - spent`; the current `earnedCoins` multiplies robot counts by `ROBOT_PRICES`, which should go).
+- Add the event types to the dashboard backend (`store.py`) and `types.ts` as optional fields, so Levels 1 to 3 are unaffected.
+- Do not touch Level 3's Robot inventory (`levels/level3/Level3Screen.tsx`). A shipped level stays frozen, and it reads `hive_inventory_balances`.
+- Replace the "filled orders" proxy in `simulation-instructor-only/server/app.py` (admin page) with real order data.
+
+### Open questions
+
+- [ ] Compare the model with a real simulation run (cart staging and start-up delays make real output lower). Start with a baseline run with no upgrades.
+- [ ] Implement `placeOrder()` / `fulfillOrder()` in `server/simulation.py` and the two events in `event_payloads.json`, with tests in `simulation-instructor-only/tests/`.
+- [ ] Decide the order model (see "Open conflict" above) and revisit the calculator output accordingly.
+- [ ] Rename `orders-calculator/` (hyphen) if it must be imported as a package by the server.
+- [ ] Move `max_slots` and the reward multipliers from `calculator.py` into `simulation_rules.json`.
 
 ## Simulation scheduling: cart / staging logic (done)
 
@@ -59,7 +113,7 @@ Implemented in `simulation-instructor-only/server/simulation.py` (`SimulationRun
 
 Each workshop level gets its own dashboard UI, and each level's UI improves on the previous one. Adding Level N must never break Levels 1 to N-1.
 
-**Done:** the Levels dropdown is in the sidebar of `level-0-hive-dashboard/frontend` and lists Level 1 and Level 2. The sidebar order is: Levels, a divider, then Simulation controls (a plain green dot with "Connected", then the buttons) and Simulation Time. Level 2 is currently an unchanged copy of Level 1 (`levels/level2/Level2Screen.tsx`), the starting point for its improvements. Level 1 is the current UI (Resources gathered, Parts manufactured, Robots assembled, with event panels).
+**Done:** the Levels dropdown is in the sidebar of `level-1-environment-setup/frontend` and lists Level 1 and Level 2. The sidebar order is: Levels, a divider, then Simulation controls (a plain green dot with "Connected", then the buttons) and Simulation Time. Level 2 is currently an unchanged copy of Level 1 (`levels/level2/Level2Screen.tsx`), the starting point for its improvements. Level 1 is the current UI (Gather resources, Manufacture parts, Assemble robots, with event panels).
 
 ### Architecture decision: a full screen per level
 
@@ -70,7 +124,7 @@ Two options were considered:
 
 We chose option 1 as the base. Reason: with shared components, improving a component for Level 3 changes what Level 1 shows, and each fix needs a regression check across levels. With a screen per level, a level is frozen once it ships and a new level starts from a copy of the previous one. The cost is some duplication. To limit it, only truly identical, presentation-only pieces are shared (for example `components/FlowDots.tsx`, `EventPanel.tsx`, `Sidebar.tsx`). If a shared piece needs a level-specific change, copy it into that level's folder instead of adding flags.
 
-### Layout (`level-0-hive-dashboard/frontend/src/`)
+### Layout (`level-1-environment-setup/frontend/src/`)
 
 - `levels/types.ts`: `LevelScreenProps` (the contract every screen receives, currently `state: DashboardState`) and `LevelDefinition` (`id`, `label`, `Screen`).
 - `levels/registry.ts`: the `LEVELS` list. The dropdown is built from it and `DEFAULT_LEVEL_ID` is its first entry.
@@ -107,7 +161,7 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 - `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `factory.state`, so it now requires 6 stations.
 - `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `hive_job_durations` join does).
 - Restart the simulation and the dashboard backend to pick these changes up.
-- To check: the Level 3 backend and frontend with a sixth station.
+- Checked: the Level 3 backend and frontend work with a sixth station.
 
 ## Sources of truth
 
@@ -115,17 +169,54 @@ Do not copy recipe quantities, delivery intervals or durations into these notes.
 
 - `simulation-instructor-only/schemas/simulation_rules.json`: resources, delivery intervals and quantities, recipes, job durations.
 - `spec-shared/schemas/event_payloads.json`: event and `factory.state` payload shapes.
+- `simulation-instructor-only/orders-calculator/orders_calculator.md`: throughput model and order generation (derived from `simulation_rules.json`; do not copy its numbers elsewhere).
 
 ## Open items & roadmap
 
-1. [x] **Unified Dashboard Scaffolding**: Moved backend and frontend to the unified dashboard (now `level-0-hive-dashboard/`).
-2. [x] **Folder Renaming**: Renamed `spec-1/2/3-*` to `level-1/2/3-*`; unified dashboard folder is `level-0-hive-dashboard/`.
+1. [x] **Unified Dashboard Scaffolding**: Moved backend and frontend to the unified dashboard (now `level-1-environment-setup/`).
+2. [x] **Folder Renaming**: Renamed `spec-1/2/3-*` to `level-1/2/3-*`; unified dashboard folder is `level-1-environment-setup/`.
 3. [x] **Cart / Staging Logic**: Incremental per-station staging for manufacturing and robot assembly (see above).
-4. [ ] **Level Selector & Validation Hook**: The dropdown is done (see Mission above). `isReady` per-run gate added to `LevelDefinition`. Still open: automated validation tests that confirm the attendee can run the selected level and warn otherwise (backend validation endpoint for level progress gates).
+4. [x] **Level Selector & Validation Hook**: The dropdown and the `isUnlocked` / `isReady` gates are done (see Mission above). A separate backend validation endpoint was dropped: the gates already tell attendees when a level is not configured.
 5. [x] **Inventory Flink SQL (`level-3-hive-inventory/`)**: `hive_inventory_balances` upsert topic. Three jobs: resources, parts, robots. CLI-first README done.
-6. [ ] **Tableflow Runbook**: Iceberg sync and data lakehouse integration instructions for both `hive_job_durations` and `hive_inventory_balances`.
+6. [ ] **Tableflow Runbook** (see "Level numbering" above for which level this is): Iceberg sync and data lakehouse integration instructions for both `hive_job_durations` and `hive_inventory_balances`.
 7. [x] **Fix `simulation-instructor-only/tests/test_api.py`**: import error on `topics`. Cause: `topics.py` lives in `spec-shared/`, which only `start_server.sh` added to `PYTHONPATH`. Fixed with `simulation-instructor-only/pytest.ini` (`pythonpath = . ../spec-shared`).
+8. [ ] **Deploy the simulation server on Google Cloud Run, then load test it for 150 users.** Details in "Cloud Run deployment and load test" below.
+
+## Cloud Run deployment and load test
+
+### 1. Deploy `simulation-instructor-only/` on Google Cloud Run
+
+The current deployment target is IBM Cloud Code Engine (`Dockerfile` header, `specifications/07_code_engine.md`). Cloud Run needs these decided or changed:
+
+- **One instance only.** The server is memory-only, so set min instances = 1 and max instances = 1 (the Code Engine spec says the same). Cloud Run's default is to scale out, which would split the factories across processes.
+- **CPU always allocated.** The clock ticks and Kafka sends happen in a background task with no HTTP traffic. Cloud Run throttles CPU outside requests by default, so use "CPU always allocated" (instance-based billing), or the sim will stall between requests.
+- **Request timeout.** Check any long-lived connection (the dashboard backend's event stream, if it holds one open to this server) against Cloud Run's request timeout (up to 60 minutes). A run lasts 2.8 to 5.6 real hours.
+- **One worker process, no reload.** Same as the Code Engine spec.
+- **Redeploy resets all factories.** Cloud Run keeps old and new revisions overlapping while it shifts traffic, which the spec forbids. Send 100% of traffic to the new revision only after the old one is stopped, or accept a maintenance window.
+- **Secrets.** Organizer enrollment/token hashes and cluster profiles go into Secret Manager, not the image.
+- **Fix the image first.** The `Dockerfile` has `COPY ../spec_shared/ ./spec_shared/`, which cannot work (a Docker build context cannot read its parent, and the folder is `spec-shared`). Build from the repo root or copy the shared folder in.
+- **Update the docs:** `07_code_engine.md` (or add a Cloud Run page), `README.md`, and `INSTRUCTOR_GUIDE.md`. Keep one deployment page per platform.
+- **Open question:** TTL is 20160 seconds (5.6 hours) and a run is 2 sim weeks. Check that the Cloud Run instance outlives a full workshop day.
+
+### 2. Load test for 150 users without 150 Confluent Cloud clusters
+
+Goal: show that one instance holds 150 factories running at once. Real Confluent connections are not needed to test the simulation and API load.
+
+- **Replace the Kafka producer, not the server.** `FactoryKafkaProducer` (`server/producer.py`) already falls back to an in-memory mock when `confluent_kafka` is missing. Add an explicit switch, such as `KAFKA_MODE=mock` or `null`, that makes `FactoryKafkaProducer` discard messages (optionally after a fixed fake delay and a configurable failure rate). Use it only for load testing, and make sure it cannot be turned on in a workshop by accident.
+- **Cover the rest of the connect path.** Provisioning calls `verify_permissions_and_topics`, which talks to Kafka. The mock must return success without a network call, so factories reach the running state.
+- **Simulate 150 users.** A script (Locust or k6, or plain asyncio) that, for each virtual user, creates a factory, connects, starts it, polls the factory status and the admin page, then restarts it. Include pause and stop, and the dashboard backend's usual request pattern.
+- **Match real behaviour.** Use 1x speed and run for at least one full sim week (2.8 real hours), or a shorter window under load to find limits, then one long soak run.
+- **Measure:**
+  - Tick lag: does the sim clock stay at 1 sim minute per real second with 150 factories? This is the key number.
+  - CPU and memory per instance, and the memory growth over the soak.
+  - Request latency (p50, p95, p99) and error rate.
+  - The buffer fill and drops against `FACTORY_BUFFER_LIMIT_EVENTS` and `FACTORY_BUFFER_LIMIT_BYTES`.
+  - Event volume per second across all factories. This is also the load Confluent Cloud will see in a real workshop, so compare it with the cluster's throughput limits.
+- **Check the guards.** `specifications/07_code_engine.md` calls for a maximum-factories limit, but `server/config.py` has no such setting (only the buffer limits and the TTL). Add it, then test the TTL cleanup and the rejection of the 151st user.
+- **What it will not show:** real Confluent latency, throttling, and authentication failures. Test those with a few real clusters (say 3 to 5 attendees) before the class.
+- **Pass criteria (to agree):** for example, tick lag under 1 sim minute, p95 latency under 500 ms, no dropped events, and memory flat over the soak.
+- **If it fails:** the server is single-process with in-process locks, so the fix is to make the tick loop cheaper or to shard factories across servers, not to scale out one shared instance.
 
 ## Pending UI decisions
 
-- **Progress spinner style**: `SegmentRingLegacy` in `level-0-hive-dashboard/frontend/src/components/StationStats.tsx` is the old arc-segment ring kept as backup. The active spinner is `DotSpinner` (12-dot comet style). **Delete `SegmentRingLegacy` once the new spinner is confirmed.**
+- **Progress spinner style**: `SegmentRingLegacy` in `level-1-environment-setup/frontend/src/components/StationStats.tsx` is the old arc-segment ring kept as backup. The active spinner is `DotSpinner` (12-dot comet style). **Delete `SegmentRingLegacy` once the new spinner is confirmed.**

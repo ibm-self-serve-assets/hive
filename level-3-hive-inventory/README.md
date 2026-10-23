@@ -251,6 +251,29 @@ confluent flink shell \
 
 ---
 
+## Visualizing Topics with Stream Lineage
+
+Now that you have both raw event topics and derived stream processing pipelines active, you can use Confluent Cloud's **Stream Lineage** feature to visually inspect the end-to-end data flow graph across your cluster.
+
+Stream Lineage is built into Stream Governance (Essentials) and automatically tracks event provenance across producers, Kafka topics, Flink stream processing statements, and consumer applications without any manual instrumentation.
+
+### How to Access Stream Lineage
+
+1. Open the [Confluent Cloud Console](https://confluent.cloud).
+2. Select your **`hive_dev`** environment.
+3. Click into your Kafka cluster (e.g. `hive_cluster_1`).
+4. In the left navigation menu under your cluster, click **Stream Lineage**.
+
+### What to Explore in Level 3
+
+- **Upstream Source Topics:** Trace events originating from the simulation across raw topics such as `gathering-completed`, `manufacturing-started`, `manufacturing-completed`, `assembly-started`, and `assembly-completed`.
+- **Flink Processing Statement:** Identify the Flink job node representing your running `hive-inventory-jobs` statement set (as well as Level 2's `hive_job_durations` joins).
+- **Derived Sink Topic:** Observe the flow routing into the `hive_inventory_balances` topic (the upsert changelog table).
+- **Downstream Consumers:** Locate the consumer application nodes representing your local Hive Dashboard backend service reading the live inventory balances and raw events.
+- **Node & Stream Inspection:** Click on any topic or stream edge in the lineage graph to view real-time throughput metrics (records/sec, bytes/sec), active schemas registered in Schema Registry, partition distributions, and consumer lag.
+
+---
+
 ## Workshop Teardown & Resource Cleanup
 
 > Only perform these steps when you are ready to clean up all cloud resources.

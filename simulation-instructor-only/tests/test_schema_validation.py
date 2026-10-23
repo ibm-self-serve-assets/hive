@@ -74,7 +74,9 @@ def test_schema_conformance(schemas):
     # Every activity event type the sim can emit must appear in the schema
     expected_activity_types = {
         "gathering.started", "gathering.completed", "gathering.blocked",
+        "manufacturing.resources.acquired",
         "manufacturing.started", "manufacturing.completed", "manufacturing.blocked",
+        "assembly.parts.acquired",
         "assembly.started", "assembly.completed", "assembly.blocked",
     }
     missing_from_schema = expected_activity_types - set(payload_validators.keys())

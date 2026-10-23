@@ -19,6 +19,8 @@ from server.models import (
     AssemblyStartedPayload,
     PartProducedPayload,
     RobotAssembledPayload,
+    ResourcesAcquiredPayload,
+    PartsAcquiredPayload,
     ManufacturingBlockedPayload,
 )
 from server.rules import get_simulation_rules, SimulationRules
@@ -398,13 +400,18 @@ class SimulationRun:
         station_id: str,
         required: Dict[str, int],
         stock: Dict[str, int],
-    ) -> Dict[str, int]:
+    ) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
         Move min(still needed, available) of each required input from `stock` into the
-        station's cart. Returns what the cart is still missing (empty when complete).
+        station's cart.
+
+        Returns:
+            missing  — inputs still needed to fill the cart (empty when cart is complete)
+            grabbed  — what was actually removed from stock this call (empty if nothing moved)
         """
         cart = self.carts.setdefault(station_id, {})
         missing: Dict[str, int] = {}
+        grabbed: Dict[str, int] = {}
         for name, qty in required.items():
             held = cart.get(name, 0)
             grab = min(qty - held, stock.get(name, 0))
@@ -412,9 +419,10 @@ class SimulationRun:
                 stock[name] -= grab
                 held += grab
                 cart[name] = held
+                grabbed[name] = grab
             if held < qty:
                 missing[name] = qty - held
-        return missing
+        return missing, grabbed
 
     def _schedule_parts_manufacturing(
         self,
@@ -451,7 +459,29 @@ class SimulationRun:
                 inputs = mfg.inputs
                 duration_ms = mfg.duration_ms
                 output_type = mfg.output_type
-                missing = self._stage_inputs(st_id, inputs, self.resources)
+                missing, grabbed = self._stage_inputs(st_id, inputs, self.resources)
+
+                # Emit resources.acquired for every item moved from stock into cart
+                if grabbed:
+                    self.state_revision += 1
+                    emitted_events.append((".manufacturing-resources-acquired", EventEnvelope(
+                        event_id=str(uuid.uuid4()),
+                        event_type="manufacturing.resources.acquired",
+                        schema_version=1,
+                        factory_id=self.factory_id,
+                        server_epoch=self.server_epoch,
+                        run_id=self.run_id,
+                        run_generation=self.run_generation,
+                        event_sequence=event_seq_generator(),
+                        state_revision=self.state_revision,
+                        occurred_at=occurred_iso,
+                        sim_time_minutes=instant_ms // 60_000,
+                        causation_id=None,
+                        payload=ResourcesAcquiredPayload(
+                            station_id=st_id,
+                            inputs_grabbed=grabbed,
+                        ).model_dump(),
+                    )))
 
                 if missing:
                     if st_id not in self._blocked_stations:
@@ -475,9 +505,9 @@ class SimulationRun:
                         )))
                 else:
                     self._blocked_stations.discard(st_id)
-                    self.carts[st_id] = {}  # cart is consumed by the job
                     job_id = str(uuid.uuid4())
                     started_event_id = str(uuid.uuid4())
+                    self.carts[st_id] = {}  # cart is consumed by the job
                     self.active_jobs[st_id] = ActiveJob(
                         job_id=job_id,
                         station_id=st_id,
@@ -548,7 +578,29 @@ class SimulationRun:
             inputs_a = asm.inputs
             duration_ms_a = asm.duration_ms
             robot_id = asm.output_type
-            missing_parts = self._stage_inputs(st_id, inputs_a, self.parts)
+            missing_parts, grabbed_parts = self._stage_inputs(st_id, inputs_a, self.parts)
+
+            # Emit parts.acquired for every item moved from parts stock into cart
+            if grabbed_parts:
+                self.state_revision += 1
+                emitted_events.append((".assembly-parts-acquired", EventEnvelope(
+                    event_id=str(uuid.uuid4()),
+                    event_type="assembly.parts.acquired",
+                    schema_version=1,
+                    factory_id=self.factory_id,
+                    server_epoch=self.server_epoch,
+                    run_id=self.run_id,
+                    run_generation=self.run_generation,
+                    event_sequence=event_seq_generator(),
+                    state_revision=self.state_revision,
+                    occurred_at=occurred_iso,
+                    sim_time_minutes=instant_ms // 60_000,
+                    causation_id=None,
+                    payload=PartsAcquiredPayload(
+                        station_id=st_id,
+                        inputs_grabbed=grabbed_parts,
+                    ).model_dump(),
+                )))
 
             if missing_parts:
                 if st_id not in self._blocked_stations:
@@ -572,9 +624,9 @@ class SimulationRun:
                     )))
             else:
                 self._blocked_stations.discard(st_id)
-                self.carts[st_id] = {}  # cart is consumed by the job
                 job_id = str(uuid.uuid4())
                 started_event_id = str(uuid.uuid4())
+                self.carts[st_id] = {}  # cart is consumed by the job
                 self.active_jobs[st_id] = ActiveJob(
                     job_id=job_id,
                     station_id=st_id,
@@ -610,7 +662,7 @@ class SimulationRun:
 
         return emitted_events
 
-    def build_snapshot_payload(self) -> FactoryStatePayload:
+    def build_snapshot_payload(self, include_debug_inventory: bool = False) -> FactoryStatePayload:
         station_states: List[StationState] = []
 
         for st_id in self.rules.station_order:
@@ -680,7 +732,7 @@ class SimulationRun:
                 )
             )
 
-        return FactoryStatePayload(
+        payload = FactoryStatePayload(
             lifecycle_status=self.lifecycle_status,
             running=is_running,
             operational_error=self.operational_error,
@@ -695,14 +747,31 @@ class SimulationRun:
             last_applied_command_id=self.last_applied_command_id,
         )
 
+        if include_debug_inventory:
+            # Aggregate robots by output_type across all assembly stations
+            robots: Dict[str, int] = {}
+            for st_id, count in self.completed_robots_by_station.items():
+                asm = self.rules.get_assembly(st_id)
+                if asm:
+                    robots[asm.output_type] = robots.get(asm.output_type, 0) + count
+
+            payload.debug_mode_instructor_only = {
+                "resource": dict(self.resources),
+                "part": dict(self.parts),
+                "robot": robots,
+            }
+
+        return payload
+
     def create_snapshot_event(
         self,
         event_seq_generator,
         occurred_at: Optional[str] = None,
         causation_id: Optional[str] = None,
+        include_debug_inventory: bool = False,
     ) -> Tuple[str, EventEnvelope]:
         occurred_iso = occurred_at or datetime.now(timezone.utc).isoformat()
-        payload = self.build_snapshot_payload()
+        payload = self.build_snapshot_payload(include_debug_inventory=include_debug_inventory)
         event = EventEnvelope(
             event_id=str(uuid.uuid4()),
             event_type="factory.state",

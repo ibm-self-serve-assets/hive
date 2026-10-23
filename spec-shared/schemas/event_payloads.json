@@ -109,6 +109,28 @@
       },
       "additionalProperties": false
     },
+    "manufacturing.resources.acquired": {
+      "type": "object",
+      "description": "Emitted every time resources are moved from factory stock into a manufacturing station's staging cart. May fire multiple times per job as stock arrives incrementally. inputs_grabbed is the delta for this transfer only.",
+      "required": ["station_id", "inputs_grabbed"],
+      "properties": {
+        "station_id": {
+          "type": "string",
+          "enum": [
+            "structural_molding",
+            "electronics_assembly",
+            "actuator_fabrication",
+            "battery_assembly"
+          ]
+        },
+        "inputs_grabbed": {
+          "type": "object",
+          "description": "Resources removed from factory stock in this transfer (delta, not cumulative).",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
     "assembly.started": {
       "type": "object",
       "required": ["job_id", "station_id", "output_type", "inputs"],
@@ -156,6 +178,23 @@
         },
         "missing_inputs": {
           "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "assembly.parts.acquired": {
+      "type": "object",
+      "description": "Emitted every time parts are moved from parts inventory into an assembly station's staging cart. May fire multiple times per robot job as parts become available incrementally. inputs_grabbed is the delta for this transfer only.",
+      "required": ["station_id", "inputs_grabbed"],
+      "properties": {
+        "station_id": {
+          "type": "string",
+          "enum": ["worker_assembly", "forager_assembly"]
+        },
+        "inputs_grabbed": {
+          "type": "object",
+          "description": "Parts removed from parts inventory in this transfer (delta, not cumulative).",
           "additionalProperties": { "type": "integer", "minimum": 1 }
         }
       },
@@ -303,6 +342,21 @@
         "last_applied_command_id": {
           "type": ["string", "null"],
           "format": "uuid"
+        },
+        "debug_mode_instructor_only": {
+          "description": "Ground-truth inventory snapshot injected when the server is in debug mode. Null when debug mode is off. DO NOT use this field in attendee views — it is absent in normal runs.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "properties": {
+                "resource": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+                "part":     { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+                "robot":    { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+              },
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "additionalProperties": false

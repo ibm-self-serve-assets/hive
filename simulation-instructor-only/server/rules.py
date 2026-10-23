@@ -4,6 +4,22 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 
+class SimulationTimeConfig(BaseModel):
+    max_sim_weeks: int = 2
+
+    @property
+    def max_sim_days(self) -> int:
+        return self.max_sim_weeks * 7
+
+    @property
+    def max_sim_minutes(self) -> int:
+        return self.max_sim_days * 24 * 60
+
+    @property
+    def max_sim_ms(self) -> int:
+        return self.max_sim_minutes * 60_000
+
+
 class StationMetadata(BaseModel):
     level: int
     cost_purchase: int
@@ -72,6 +88,7 @@ class AssemblyConfig(BaseModel):
 
 
 class SimulationRules(BaseModel):
+    simulation_time: SimulationTimeConfig = SimulationTimeConfig()
     resources: List[ResourceConfig]
     parts: List[str]
     manufacturing: List[ManufacturingConfig]

@@ -94,6 +94,18 @@ class RobotAssembledPayload(BaseModel):
     quantity: int = 1
 
 
+class ResourcesAcquiredPayload(BaseModel):
+    """Emitted whenever resources are moved from factory stock into a manufacturing station's cart."""
+    station_id: str
+    inputs_grabbed: Dict[str, int]  # delta: what was taken from stock this pass
+
+
+class PartsAcquiredPayload(BaseModel):
+    """Emitted whenever parts are moved from parts inventory into an assembly station's cart."""
+    station_id: str
+    inputs_grabbed: Dict[str, int]  # delta: what was taken from parts stock this pass
+
+
 class ManufacturingBlockedPayload(BaseModel):
     station_id: str
     missing_inputs: Dict[str, int]
@@ -144,3 +156,8 @@ class FactoryStatePayload(BaseModel):
     stations: List[StationState]
     completed_robots: CompletedWorkersState
     last_applied_command_id: Optional[str] = None
+    # Present only when the server is in debug mode.
+    # Named intentionally — DO NOT use this field in attendee views.
+    # It is injected server-side for instructor diagnostics only and is absent
+    # in all normal (non-debug) simulation runs.
+    debug_mode_instructor_only: Optional[Dict[str, Any]] = None

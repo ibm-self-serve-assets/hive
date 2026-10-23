@@ -23,7 +23,13 @@ from server.producer import FactoryKafkaProducer
 
 logger = logging.getLogger("hive.factory")
 
-MAX_SIM_MS = 7 * 24 * 60 * 60_000  # 1 week = 10,080 sim minutes
+def get_max_sim_ms() -> int:
+    try:
+        return get_simulation_rules().simulation_time.max_sim_ms
+    except Exception:
+        return 14 * 24 * 60 * 60_000
+
+MAX_SIM_MS = get_max_sim_ms()
 
 
 class FactoryInstance:
@@ -92,7 +98,7 @@ class FactoryInstance:
     def check_expiry(self) -> bool:
         if self.is_expired:
             return True
-        if datetime.now(timezone.utc) >= self.expires_at or self.current_run.sim_time_ms >= MAX_SIM_MS:
+        if datetime.now(timezone.utc) >= self.expires_at or self.current_run.sim_time_ms >= get_max_sim_ms():
             self.is_expired = True
             self.current_run.lifecycle_status = "expired"
             self.current_run.operational_error = None
@@ -123,7 +129,12 @@ class FactoryManager:
         self.server_epoch = str(uuid.uuid4())
 
         self.registration_lock = asyncio.Lock()
-        
+
+        # Debug mode: when True, factory.state payloads include a debug_mode_instructor_only
+        # snapshot of the server-side inventory truth so the attendee dashboard
+        # can display it without needing a Flink hive_inventory_balances topic.
+        self.debug_mode: bool = False
+
         # attendee_id -> factory_id
         self.owner_factories: Dict[str, str] = {}
         # factory_id -> FactoryInstance
@@ -651,12 +662,14 @@ class FactoryManager:
                         continue
 
                     async with factory.lock:
+                        dbg = self.debug_mode
                         if factory.current_run.lifecycle_status != "running":
                             # If paused or stopped, check 1-second heartbeat snapshot
                             if now_monotonic - factory.last_snapshot_wall_time >= 1.0:
                                 snap = factory.current_run.create_snapshot_event(
                                     event_seq_generator=factory.next_event_sequence,
                                     occurred_at=now_utc_iso,
+                                    include_debug_inventory=dbg,
                                 )
                                 if factory.buffer.can_fit([snap], is_control=False):
                                     factory.buffer.enqueue(*snap)
@@ -672,7 +685,7 @@ class FactoryManager:
                         if elapsed_sim_ms <= 0:
                             continue
 
-                        target_sim_time = min(factory.current_run.sim_time_ms + elapsed_sim_ms, MAX_SIM_MS)
+                        target_sim_time = min(factory.current_run.sim_time_ms + elapsed_sim_ms, get_max_sim_ms())
 
                         # Advance simulation
                         events = factory.current_run.advance_to(
@@ -687,6 +700,7 @@ class FactoryManager:
                             snap = factory.current_run.create_snapshot_event(
                                 event_seq_generator=factory.next_event_sequence,
                                 occurred_at=now_utc_iso,
+                                include_debug_inventory=dbg,
                             )
                             events.append(snap)
 

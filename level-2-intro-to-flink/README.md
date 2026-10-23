@@ -75,7 +75,7 @@ You will first configure your environment and run the pipeline using the **Confl
 
 ### Step 1: Initial Setup via Confluent Cloud UI
 
-> **Note on Schema Registry:** Schema Registry is already active because you selected the **Essentials** Stream Governance package when creating the `hive_dev` environment in [Level 0](../level-0-hive-dashboard/README.md#step-2-create-your-confluent-cloud-environment-hive_dev).
+> **Note on Schema Registry:** Schema Registry is already active because you selected the **Essentials** Stream Governance package when creating the `hive_dev` environment in [Level 1](../level-1-environment-setup/README.md#step-2-create-your-confluent-cloud-environment-hive_dev).
 
 1. **Create Your Flink Compute Pool**:
    - From the home page of your Confluent Cloud instance, select **Environment** from the left navigation
@@ -119,7 +119,7 @@ You will first configure your environment and run the pipeline using the **Confl
 
 #### A. Ensure Factory Data is Flowing
 Start by ensuring your dashboard is:
-- Connected to the Hive simulation server and running (see [Level 1](../level-1-connect-simulation/README.md)).
+- Connected to the Hive simulation server and running (see [Level 1, Step 8](../level-1-environment-setup/README.md#step-8-run-your-simulation)).
 - The simulation timer should be incrementing up.
 - This ensures Kafka events are actively published to `gathering-*`, `manufacturing-*`, and `assembly-*` topics.
 
