@@ -25,7 +25,7 @@
 
 CREATE TABLE `hive_job_durations` (
   `job_id`              STRING,           -- shared by the started and completed event
-  `factory_id`          STRING,
+  `simulation_id`          STRING,
   `run_id`              STRING,
   `stage`               STRING,           -- gathering | manufacturing | assembly
   `started_topic`       STRING,           -- Kafka topic the started event came from

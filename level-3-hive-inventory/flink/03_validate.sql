@@ -3,7 +3,7 @@
 -- =============================================================================
 --
 -- Run this inside a `confluent flink shell` session (see README, Step 5).
--- The factory simulation must be running and hive-inventory-jobs must have
+-- The simulation simulation must be running and hive-inventory-jobs must have
 -- status RUNNING before rows appear.
 --
 -- Expected: one row per item per run (5 resources + 4 parts + 2 robots = 11

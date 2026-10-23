@@ -6,7 +6,7 @@ Start with specifications/00_overview.md, then read all specifications before im
 
 No cloud resources, accounts or credentials were created by this package. No real API keys are included.
 
-Current scope: memory-only simulation and UI projection. No application database or crash recovery. Kafka retains already-published events under its own topic policy. Server restart loses factories; local app restart only loses its displayed cache.
+Current scope: memory-only simulation and UI projection. No application database or crash recovery. Kafka retains already-published events under its own topic policy. Server restart loses simulations; local app restart only loses its displayed cache.
 
 When replacing an older extraction, overwrite its root .env with the included clean .env (or copy .env.example). Old DATABASE_URL or credential-encryption settings are not used by this memory-only prototype. Supply only the enrollment configuration path needed by this version.
 

@@ -12,7 +12,7 @@ def test_simulation_first_cycle():
         return seq
 
     sim = SimulationRun(
-        factory_id=str(uuid.uuid4()),
+        simulation_id=str(uuid.uuid4()),
         server_epoch=str(uuid.uuid4()),
         run_generation=1,
         lifecycle_status="running",
@@ -48,7 +48,7 @@ def test_conservation_of_materials():
         return seq
 
     sim = SimulationRun(
-        factory_id=str(uuid.uuid4()),
+        simulation_id=str(uuid.uuid4()),
         server_epoch=str(uuid.uuid4()),
         run_generation=1,
         lifecycle_status="running",
@@ -95,7 +95,7 @@ def test_conservation_of_materials():
 
 def _new_sim():
     return SimulationRun(
-        factory_id=str(uuid.uuid4()), server_epoch=str(uuid.uuid4()),
+        simulation_id=str(uuid.uuid4()), server_epoch=str(uuid.uuid4()),
         lifecycle_status="running",
     )
 

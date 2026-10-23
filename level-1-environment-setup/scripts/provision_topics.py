@@ -2,19 +2,19 @@
 """
 provision_topics.py
 ───────────────────
-Creates your Kafka topics before you register your factory.  Uses the topics located in [spec-shared/schemas/event_payloads.json](../../spec-shared/schemas/event_payloads.json).
+Creates your Kafka topics before you register your simulation.  Uses the topics located in [spec-shared/schemas/event_payloads.json](../../spec-shared/schemas/event_payloads.json).
 
-The simulation server publishes events to these topics as your factory runs.
-Topics must exist before you call /v1/factories — the server verifies them
+The simulation server publishes events to these topics as your simulation runs.
+Topics must exist before you call /v1/simulations — the server verifies them
 at registration time and will reject your request if any are missing.
 
 State topic (compact policy, infinite retention):
-factory-state             — full factory snapshot (lifecycle, inventory, stations)
+simulation-state             — full simulation snapshot (lifecycle, inventory, stations)
 
 WHY COMPACT FOR FACTORY-STATE?
   Log compaction keeps only the most recent message per key. This means your
   local consumer can always replay from offset 0 and land on current state
-  in a single pass — no matter how long the factory has been running.
+  in a single pass — no matter how long the simulation has been running.
 
 IDEMPOTENT: running this script twice is safe. Existing topics are left
 unchanged and reported as "~ Exists" rather than causing an error.
@@ -73,7 +73,7 @@ ACTIVITY_CONFIG = {
     "retention.ms": str(24 * 60 * 60 * 1000),
 }
 
-# Factory state: compact — broker retains only the latest message per key.
+# Simulation state: compact — broker retains only the latest message per key.
 # Your local consumer replays from offset 0 on every restart to rebuild
 # current state without needing any external database.
 STATE_CONFIG = {
@@ -86,7 +86,7 @@ def _load_topics() -> List[Tuple[str, dict]]:
     Derive topic names from spec-shared/schemas/event_payloads.json.
     Keys in ``topics`` use dot-notation (e.g. ``gathering.started``);
     topic names use hyphens (``gathering-started``).
-    ``factory.state`` gets the compact/infinite-retention policy;
+    ``simulation.state`` gets the compact/infinite-retention policy;
     all others get the delete/24 h policy.
     """
     with _SCHEMA_PATH.open() as fh:
@@ -94,7 +94,7 @@ def _load_topics() -> List[Tuple[str, dict]]:
     return [
         (
             key.replace(".", "-"),
-            STATE_CONFIG if key == "factory.state" else ACTIVITY_CONFIG,
+            STATE_CONFIG if key == "simulation.state" else ACTIVITY_CONFIG,
         )
         for key in schema["topics"]
     ]
@@ -247,7 +247,7 @@ def main():
     if args.dry_run:
         print("Dry-run complete. Remove --dry-run to create the topics for real.")
     else:
-        print("All topics provisioned. You can now register your factory.")
+        print("All topics provisioned. You can now register your simulation.")
 
 
 if __name__ == "__main__":

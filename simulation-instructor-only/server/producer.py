@@ -18,7 +18,7 @@ except ImportError:
     KAFKA_AVAILABLE = False
 
 
-class FactoryKafkaProducer:
+class SimulationKafkaProducer:
     def __init__(
         self,
         bootstrap_servers: str,
@@ -169,7 +169,7 @@ class FactoryKafkaProducer:
 
     async def verify_permissions_and_topics(
         self,
-        factory_id: str,
+        simulation_id: str,
         server_epoch: str,
         run_id: str,
         run_generation: int,
@@ -180,7 +180,7 @@ class FactoryKafkaProducer:
         """
         Runs onboarding probe verification:
         1. Sends connection.test probe to the four activity topics.
-        2. Sends empty paused factory.state snapshot to .factory-state topic.
+        2. Sends empty paused simulation.state snapshot to .simulation-state topic.
         All require broker acknowledgment.
         """
         if self._producer is None and not KAFKA_AVAILABLE:
@@ -202,7 +202,7 @@ class FactoryKafkaProducer:
                 event_id=str(uuid.uuid4()) if 'uuid' in globals() else "probe-id",
                 event_type="connection.test",
                 schema_version=1,
-                factory_id=factory_id,
+                simulation_id=simulation_id,
                 server_epoch=server_epoch,
                 run_id=run_id,
                 run_generation=run_generation,
@@ -213,19 +213,19 @@ class FactoryKafkaProducer:
                 causation_id=None,
                 payload=probe_payload.model_dump(),
             )
-            k = probe_event.factory_id.encode("utf-8")
+            k = probe_event.simulation_id.encode("utf-8")
             v = json.dumps(probe_event.model_dump()).encode("utf-8")
 
             success = await asyncio.to_thread(self.publish_sync, suffix, k, v)
             if not success:
                 return False, f"Failed write probe verification on topic '{self.topics[suffix]}'"
 
-        # 2. factory-state snapshot probe
-        k = empty_snapshot_event.factory_id.encode("utf-8")
+        # 2. simulation-state snapshot probe
+        k = empty_snapshot_event.simulation_id.encode("utf-8")
         v = json.dumps(empty_snapshot_event.model_dump()).encode("utf-8")
-        success = await asyncio.to_thread(self.publish_sync, ".factory-state", k, v)
+        success = await asyncio.to_thread(self.publish_sync, ".simulation-state", k, v)
         if not success:
-            return False, f"Failed state probe verification on topic '{self.topics['.factory-state']}'"
+            return False, f"Failed state probe verification on topic '{self.topics['.simulation-state']}'"
 
         return True, None
 

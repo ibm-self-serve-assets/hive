@@ -23,8 +23,8 @@ This workshop's documentation highlights why event-driven architectures is power
 
 To access your **Hive simulation dashboard**, you will run these components from your laptop:
 
-- **Backend** (`backend/`): FastAPI service that connects to Confluent Cloud via `confluent-kafka` and streams live factory projections to the UI over Server-Sent Events (SSE).
-- **Frontend** (`frontend/`): React + TypeScript + Vite UI displaying the robotic manufacturing floor, factory controls, and the level progression selector.
+- **Backend** (`backend/`): FastAPI service that connects to Confluent Cloud via `confluent-kafka` and streams live simulation projections to the UI over Server-Sent Events (SSE).
+- **Frontend** (`frontend/`): React + TypeScript + Vite UI displaying the robotic manufacturing floor, simulation controls, and the level progression selector.
 
 Your Hive dashboard connects to two services:
 
@@ -146,7 +146,7 @@ The backend and topic provisioning scripts read configuration from `spec-shared/
 
    | Value | Why it is needed | Where it is used |
    |---|---|---|
-   | `CONFLUENT_BOOTSTRAP_SERVER` | The address of your Kafka cluster. | Sent to the Simulation when your dashboard registers your factory ([`backend/app.py`](backend/app.py#L160-L168)). Used to open the dashboard's Kafka connections ([`backend/consumer.py`](backend/consumer.py#L74-L83), [`backend/topic_watch.py`](backend/topic_watch.py#L50-L56)). |
+   | `CONFLUENT_BOOTSTRAP_SERVER` | The address of your Kafka cluster. | Sent to the Simulation when your dashboard registers your simulation ([`backend/app.py`](backend/app.py#L160-L168)). Used to open the dashboard's Kafka connections ([`backend/consumer.py`](backend/consumer.py#L74-L83), [`backend/topic_watch.py`](backend/topic_watch.py#L50-L56)). |
    | `CONFLUENT_API_KEY` and `CONFLUENT_API_SECRET` | Authenticate to your cluster. | Sent to the Simulation in the same registration request so it can publish your events ([`backend/app.py`](backend/app.py#L160-L168)). Used by the dashboard to read events and check that your topics exist ([`backend/consumer.py`](backend/consumer.py#L74-L83), [`backend/topic_watch.py`](backend/topic_watch.py#L50-L56)). Also used by the topic provisioning script in [Step 4](#step-4-provision-your-kafka-topics) ([`provision_topics.py`](scripts/provision_topics.py#L197-L200)). |
    | `CONFLUENT_REST_ENDPOINT` and `CONFLUENT_CLUSTER_ID` | Address the Confluent REST API for your cluster. | Only used by the script in [Step 4](#step-4-provision-your-kafka-topics) that creates your topics ([`provision_topics.py`](scripts/provision_topics.py#L197-L200)). |
 
@@ -190,7 +190,7 @@ CONFLUENT_CLUSTER_ID=lkc-xxxxxx
 
 ## Step 4: Provision Your Kafka Topics
 
-Your Simulation talks to the rest of the workshop by publishing events to [Kafka topics](https://developer.confluent.io/courses/apache-kafka/topics/). A topic is a named, append-only log: the Simulation writes each new event to the end of the log, and your dashboard (and later, Flink) reads it from the beginning. The topics must already exist in **your** cluster before the Simulation can publish to them. The Simulation checks for them when your dashboard registers your factory in the next step, so you create them first.
+Your Simulation talks to the rest of the workshop by publishing events to [Kafka topics](https://developer.confluent.io/courses/apache-kafka/topics/). A topic is a named, append-only log: the Simulation writes each new event to the end of the log, and your dashboard (and later, Flink) reads it from the beginning. The topics must already exist in **your** cluster before the Simulation can publish to them. The Simulation checks for them when your dashboard registers your simulation in the next step, so you create them first.
 
 From the repository root, run:
 
@@ -205,18 +205,7 @@ The script creates its own Python virtual environment, installs what it needs, a
 
 ### What the script does
 
-**Which topics it creates.** Every event type listed under `topics` in [`spec-shared/schemas/event_payloads.json`](../spec-shared/schemas/event_payloads.json) becomes one topic, with the dot in the event name replaced by a hyphen: `gathering.started` becomes `gathering-started`. If an event type is added to that file, the script and the dashboard's topic check both pick it up.
-
-#### Note: Why the event name has a dot but the topic name has a hyphen
-
-You will see the same event written two ways, and each form has a different job:
-
-- **The event name uses a dot** (`gathering.started`). It reads as `thing.action`, so you can talk about a whole group of events at once, such as `*.started` or `*.completed`. Every event your simulation publishes carries this name in its `event_type` field, and the dashboard uses it to decide how to display the event.
-- **The topic name uses a hyphen** (`gathering-started`). It is only the name of the log in Kafka. Kafka itself discourages `.` in topic names, because Kafka's metrics treat `.` and `_` as the same character, so two topics that differ only in those characters (`gathering.started` and `gathering_started`) can collide. A hyphen avoids this. It also keeps the raw event topics (`gathering-started`) visibly different from the topics you create with Flink later, which use underscores (`hive_job_durations`).
-
-In Flink you refer to an event by its topic name, with backticks around it because of the hyphen: ``FROM `gathering-started` ``. You never need the dotted name there.
-
-**How it creates them.** For each topic, the script makes one call to the Confluent Cloud Kafka REST API ([`provision_topics.py`](scripts/provision_topics.py#L135-L141)):
+For each topic, the script makes one call to the Confluent Cloud Kafka REST API ([`provision_topics.py`](scripts/provision_topics.py#L135-L141)):
 
 ```python
 url = f"{rest_endpoint}/kafka/v3/clusters/{cluster_id}/topics"
@@ -228,22 +217,33 @@ body = json.dumps({
 }).encode()
 ```
 
-- **The URL** is built from `CONFLUENT_REST_ENDPOINT` and `CONFLUENT_CLUSTER_ID`, the two values from [Step 3](#step-3-configure-environment-credentials-spec-sharedenv) that only the topic scripts use. The REST API is Confluent's way to *administer* a cluster, such as creating topics. The bootstrap server is for Kafka clients that produce and consume events.
-- **The call is authenticated** with your `CONFLUENT_API_KEY` and `CONFLUENT_API_SECRET` as HTTP Basic credentials ([`provision_topics.py`](scripts/provision_topics.py#L109-L111)).
-- **`partitions_count: 1`.** A partition is Kafka's unit of parallelism and ordering. Events are only ordered *within* a partition, so a single partition keeps every event in a topic in the exact order it happened. That matters when you replay a factory's history. You have one simulation and one dashboard, so you don't need more.
+- **`topic_name: topic_name`** Every event type listed under `topics` in [`spec-shared/schemas/event_payloads.json`](../spec-shared/schemas/event_payloads.json) becomes one topic, with the dot in the event name replaced by a hyphen: `gathering.started` becomes `gathering-started`. Why dots and dashes is explained in a following Note. 
+- **`partitions_count: 1`.** A partition is Kafka's unit of parallelism and ordering. Events are only ordered *within* a partition, so a single partition keeps every event in a topic in the exact order it happened. That matters when you replay a simulation's history. You have one simulation and one dashboard, so you don't need more.
 - **`replication_factor: 3`.** Each event is stored on three brokers so that losing one doesn't lose data. Three copies is the standard for durability on Confluent Cloud.
 - **`configs`** set how long Kafka keeps events. The script uses two different policies, described below.
 
-**How long events are kept.** Kafka does not delete an event just because it has been read. Each topic has a *cleanup policy* that decides when old events go away:
+> ### NOTE:
+> **Why the event name has a dot but the topic name has a hyphen**
+>
+> You will see the same event written two ways, and each form has a different job:
+>
+> - **The event name uses a dot** (`gathering.started`). It reads as `thing.action`, so you can talk about a whole group of events at once, such as `*.started` or `*.completed`. Every event your simulation publishes carries this name in its `event_type` field, and the dashboard uses it to decide how to display the event.
+> - **The topic name uses a hyphen** (`gathering-started`). It is only the name of the log in Kafka. Kafka itself discourages `.` in topic names, because Kafka's metrics treat `.` and `_` as the same character, so two topics that differ only in those characters (`gathering.started` and `gathering_started`) can collide. A hyphen avoids this. It also keeps the raw event topics (`gathering-started`) visibly different from the topics you create with Flink later, which use underscores (`hive_job_durations`).
+>
+> In Flink you refer to an event by its topic name, with backticks around it because of the hyphen: ``FROM `gathering-started` ``. You never need the dotted name there.
+
+
+**How long events are kept**
+Kafka does not delete an event just because it has been read. Each topic has a *cleanup policy* that decides when old events go away:
 
 | Topics | `cleanup.policy` | `retention.ms` | Why |
 |---|---|---|---|
-| Every event topic except `factory-state` (`gathering-started`, `manufacturing-completed`, …) | `delete` | `86400000` (24 hours) | These are a stream of things that happened. Events older than 24 hours are discarded, which is plenty for a workshop session and keeps storage costs low. |
-| `factory-state` | `compact` | `-1` (never expires by time) | Each message is a full snapshot of the factory. *Compaction* keeps only the most recent message for each key, so a consumer that replays the topic from the start always ends up at the current state in a single pass, however long the simulation has been running. |
+| Every event topic except `simulation-state` (`gathering-started`, `manufacturing-completed`, …) | `delete` | `86400000` (24 hours) | These are a stream of things that happened. Events older than 24 hours are discarded, which is plenty for a workshop session and keeps storage costs low. |
+| `simulation-state` | `compact` | `-1` (never expires by time) | Each message is a full snapshot of the simulation. *Compaction* keeps only the most recent message for each key, so a consumer that replays the topic from the start always ends up at the current state in a single pass, however long the simulation has been running. |
 
 ### Why this step comes before starting the backend
 
-When your backend registers your factory in the next step, the Simulation first checks that every topic exists in your cluster and that it can write to them. If a topic is missing, the registration does not succeed. Creating the topics first avoids that.
+When your backend registers your simulation in the next step, the Simulation first checks that every topic exists in your cluster and that it can write to them. If a topic is missing, the registration does not succeed. Creating the topics first avoids that.
 
 ---
 
@@ -263,7 +263,7 @@ The backend will start at `http://localhost:8001`.
 The first time the backend starts, it automatically connects your laptop, the Hive Simulation server and your Confluent Cloud cluster ([`backend/app.py`](backend/app.py#L121-L216)). You don't need to do anything for this to happen:
 
 1. **It reads your configuration.** The backend loads [spec-shared/.env](../spec-shared/.env). If your workshop access token or Confluent credentials are missing, it skips the connection and the dashboard shows a "Missing credentials" banner.
-2. **It registers your Hive Dashboard with the Hive Simulation server.** The backend identifies you with your workshop access token and sends the server your Confluent bootstrap server, API key and API secret. The server creates your own personal robotic manufacturing simulation and returns a **Factory ID**, which the dashboard shows at the bottom of the sidebar. If you already have a simulation, the backend reconnects to it instead, and a simulation that has finished its simulated week is replaced with a fresh one.
+2. **It registers your Hive Dashboard with the Hive Simulation server.** The backend identifies you with your workshop access token and sends the server your Confluent bootstrap server, API key and API secret. The server creates your own personal robotic manufacturing simulation and returns a **Simulation ID**, which the dashboard shows at the bottom of the sidebar. If you already have a simulation, the backend reconnects to it instead, and a simulation that has finished its simulated week is replaced with a fresh one.
 3. **The Hive Simulation server checks your Confluent Cloud cluster.** Using the credentials from [spec-shared/.env](../spec-shared/.env), it confirms that every event topic from [Step 4](#step-4-provision-your-kafka-topics) exists and that it is allowed to write to them, then sends a small test event to each. Once those checks pass, your simulation is ready, and it waits in a paused state.
 4. **The backend watches your cluster for the event topics.** It checks every few seconds that all of them exist, and streams the events to the dashboard in your browser as they arrive.
 
@@ -288,7 +288,7 @@ Open your browser at **`http://localhost:5174`** (or the port displayed in your 
 
 When the dashboard loads, you will see the **Hive Robotics** interface.  The connection status indicator and **level selector dropdown** will be visible in the top-right.  As you advance through the workshop, you will use a Level selctor to activate each level. Automated validation tests will verify that your stream processing jobs and data pipelines are properly configured and running.  Once those tests pass, you will gain access to the level.
 
-The sidebar shows **Connected** and your Factory ID, and the simulation controls, including **Run**, are visible. Every counter reads zero because your simulation is paused. Continue to [Step 8](#step-8-run-your-simulation) to run your simulation and watch its events arrive.
+The sidebar shows **Connected** and your Simulation ID, and the simulation controls, including **Run**, are visible. Every counter reads zero because your simulation is paused. Continue to [Step 8](#step-8-run-your-simulation) to run your simulation and watch its events arrive.
 
 If you see a **Level 1 is locked** warning like the one below instead, one or more of your topics are missing from your Confluent Cloud cluster. Re-run [Step 4](#step-4-provision-your-kafka-topics) and the warning clears once every topic exists. If **Run** still doesn't work afterwards, ask your instructor to reset your simulation.
 
@@ -300,8 +300,8 @@ If you see a **Level 1 is locked** warning like the one below instead, one or mo
 
 Using the controls in the sidebar of your Dashboard, you can start, pause, stop and restart your simulation. Your events flow from the hosted Hive Simulation server, through Confluent Cloud, to the Hive Dashboard running on your laptop:
 
-1. **Dashboard Backend**: Connects to Confluent Cloud via `confluent-kafka` and streams raw events (`*.started`, `*.completed`, `factory.state`) to the frontend over Server-Sent Events (SSE).
-2. **Dashboard Frontend**: Displays the real-time simulation floor, active/completed counters, sim clock (`Day X, HH:MM`), and factory lifecycle controls (Run, Pause, Stop, Restart).
+1. **Dashboard Backend**: Connects to Confluent Cloud via `confluent-kafka` and streams raw events (`*.started`, `*.completed`, `simulation.state`) to the frontend over Server-Sent Events (SSE).
+2. **Dashboard Frontend**: Displays the real-time simulation floor, active/completed counters, sim clock (`Day X, HH:MM`), and simulation lifecycle controls (Run, Pause, Stop, Restart).
 
 With **Level 1** selected in the Levels dropdown, click **Run** in the simulation controls.
 
@@ -309,11 +309,11 @@ With **Level 1** selected in the Levels dropdown, click **Run** in the simulatio
 
 - The Level 1 view is unlocked. Until every topic from [Step 4](#step-4-provision-your-kafka-topics) exists in Confluent, the dashboard shows "Level 1 is locked", lists the missing topics, and hides the simulation controls.
 - The dashboard shows **Connected** in the status pill.
-- Clicking **Run** boots the factory simulation on the cloud server.
+- Clicking **Run** boots the simulation simulation on the cloud server.
 - The simulation clock advances (`0d 00h 00m` upwards at 1 real sec = 1 sim min).
 - Resource gathering counters increment as resources arrive.
 - Stations trigger and animated dot flows pulse from Resources $\rightarrow$ Parts $\rightarrow$ Robots.
-- Factory controls (Run, Pause, Stop, Restart) respond seamlessly.
+- Simulation controls (Run, Pause, Stop, Restart) respond seamlessly.
 
 ### Next Step
 

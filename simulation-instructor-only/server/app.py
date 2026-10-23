@@ -7,25 +7,25 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from server.config import ServerConfig, EnrollmentConfig, load_enrollment_config
-from server.factory_manager import FactoryManager
+from server.simulation_manager import SimulationManager
 
 logger = logging.getLogger("hive.app")
 
 
 server_config: Optional[ServerConfig] = None
 enrollment_config: Optional[EnrollmentConfig] = None
-factory_manager: Optional[FactoryManager] = None
+simulation_manager: Optional[SimulationManager] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global server_config, enrollment_config, factory_manager
+    global server_config, enrollment_config, simulation_manager
     # Load configuration
     try:
         server_config = ServerConfig.load_from_env()
         enrollment_config = load_enrollment_config()
-        factory_manager = FactoryManager(server_config, enrollment_config)
-        await factory_manager.start()
+        simulation_manager = SimulationManager(server_config, enrollment_config)
+        await simulation_manager.start()
         logger.info("Hive Simulation Server initialized and running.")
     except Exception as e:
         logger.error(f"Failed to initialize server: {e}")
@@ -33,15 +33,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if factory_manager:
-        await factory_manager.stop()
+    if simulation_manager:
+        await simulation_manager.stop()
     logger.info("Hive Simulation Server shut down cleanly.")
 
 
 app = FastAPI(
     title="Hive Simulation Server",
     version="1.0.0",
-    description="Containerized in-memory robotic bee factory simulation server for workshops.",
+    description="Containerized in-memory robotic bee simulation simulation server for workshops.",
     lifespan=lifespan,
 )
 
@@ -68,18 +68,18 @@ def get_current_attendee(authorization: Optional[str] = Header(None)) -> str:
 
 
 def require_epoch(x_server_epoch: Optional[str] = Header(None)):
-    if not factory_manager:
+    if not simulation_manager:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error_code": "service_unavailable", "message": "Factory manager not ready"},
+            detail={"error_code": "service_unavailable", "message": "Simulation manager not ready"},
         )
-    if not x_server_epoch or x_server_epoch != factory_manager.get_server_epoch():
+    if not x_server_epoch or x_server_epoch != simulation_manager.get_server_epoch():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "error_code": "server_restarted",
                 "message": "Server epoch mismatch. The simulation server may have restarted.",
-                "current_server_epoch": factory_manager.get_server_epoch(),
+                "current_server_epoch": simulation_manager.get_server_epoch(),
             },
         )
 
@@ -90,7 +90,7 @@ class ProducerCredentials(BaseModel):
     api_secret: str
 
 
-class ProvisionFactoryRequest(BaseModel):
+class ProvisionSimulationRequest(BaseModel):
     bootstrap_server: str
     producer_credentials: ProducerCredentials
 
@@ -116,7 +116,7 @@ async def health_live():
 
 @app.get("/health/ready")
 async def health_ready():
-    if factory_manager is None or enrollment_config is None:
+    if simulation_manager is None or enrollment_config is None:
         raise HTTPException(status_code=503, detail="Server not initialized")
     return {"status": "ready"}
 
@@ -124,41 +124,41 @@ async def health_ready():
 @app.get("/v1/server")
 async def get_server_info(attendee_id: str = Depends(get_current_attendee)):
     return {
-        "server_epoch": factory_manager.get_server_epoch(),
+        "server_epoch": simulation_manager.get_server_epoch(),
         "contract_version": "1.0",
-        "active_factories": len(factory_manager.factories),
+        "active_simulations": len(simulation_manager.simulations),
     }
 
 
-@app.get("/v1/factories")
-async def list_factories(attendee_id: str = Depends(get_current_attendee)):
-    factory_id = factory_manager.owner_factories.get(attendee_id)
-    if not factory_id:
-        return {"factories": []}
-    factory = factory_manager.factories.get(factory_id)
-    if not factory:
-        return {"factories": []}
+@app.get("/v1/simulations")
+async def list_simulations(attendee_id: str = Depends(get_current_attendee)):
+    simulation_id = simulation_manager.owner_simulations.get(attendee_id)
+    if not simulation_id:
+        return {"simulations": []}
+    simulation = simulation_manager.simulations.get(simulation_id)
+    if not simulation:
+        return {"simulations": []}
 
-    factory.check_expiry()
+    simulation.check_expiry()
     return {
-        "factories": [
+        "simulations": [
             {
-                "factory_id": factory.factory_id,
-                "run_id": factory.current_run.run_id,
-                "run_generation": factory.current_run.run_generation,
-                "lifecycle_status": factory.current_run.lifecycle_status,
-                "created_at": factory.created_at.isoformat(),
-                "expires_at": factory.expires_at.isoformat(),
-                "topics": factory.get_topics(),
-                "server_epoch": factory_manager.get_server_epoch(),
+                "simulation_id": simulation.simulation_id,
+                "run_id": simulation.current_run.run_id,
+                "run_generation": simulation.current_run.run_generation,
+                "lifecycle_status": simulation.current_run.lifecycle_status,
+                "created_at": simulation.created_at.isoformat(),
+                "expires_at": simulation.expires_at.isoformat(),
+                "topics": simulation.get_topics(),
+                "server_epoch": simulation_manager.get_server_epoch(),
             }
         ]
     }
 
 
-@app.post("/v1/factories", status_code=202)
-async def provision_factory(
-    req: ProvisionFactoryRequest,
+@app.post("/v1/simulations", status_code=202)
+async def provision_simulation(
+    req: ProvisionSimulationRequest,
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
     attendee_id: str = Depends(get_current_attendee),
@@ -171,7 +171,7 @@ async def provision_factory(
     if x_server_epoch:
         require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.register_factory(
+    status_code, body = await simulation_manager.register_simulation(
         attendee_id=attendee_id,
         bootstrap_server=req.bootstrap_server,
         producer_key=req.producer_credentials.api_key,
@@ -183,41 +183,41 @@ async def provision_factory(
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.get("/v1/factories/{factory_id}")
-async def get_factory(factory_id: str, attendee_id: str = Depends(get_current_attendee)):
-    factory = factory_manager.factories.get(factory_id)
-    if not factory or factory.owner_attendee_id != attendee_id:
+@app.get("/v1/simulations/{simulation_id}")
+async def get_simulation(simulation_id: str, attendee_id: str = Depends(get_current_attendee)):
+    simulation = simulation_manager.simulations.get(simulation_id)
+    if not simulation or simulation.owner_attendee_id != attendee_id:
         raise HTTPException(
             status_code=404,
-            detail={"error_code": "not_found", "message": "Factory not found"},
+            detail={"error_code": "not_found", "message": "Simulation not found"},
         )
 
-    if factory.check_expiry():
+    if simulation.check_expiry():
         raise HTTPException(
             status_code=410,
             detail={"error_code": "expired", "message": "Simulation expired"},
         )
 
     return {
-        "factory_id": factory.factory_id,
-        "run_id": factory.current_run.run_id,
-        "run_generation": factory.current_run.run_generation,
-        "lifecycle_status": factory.current_run.lifecycle_status,
-        "created_at": factory.created_at.isoformat(),
-        "expires_at": factory.expires_at.isoformat(),
-        "topics": factory.get_topics(),
-        "server_epoch": factory_manager.get_server_epoch(),
-        "pending_events_count": factory.buffer.total_events,
-        "pending_events_bytes": factory.buffer.total_bytes,
-        "operational_error": factory.current_run.operational_error.model_dump()
-        if factory.current_run.operational_error
+        "simulation_id": simulation.simulation_id,
+        "run_id": simulation.current_run.run_id,
+        "run_generation": simulation.current_run.run_generation,
+        "lifecycle_status": simulation.current_run.lifecycle_status,
+        "created_at": simulation.created_at.isoformat(),
+        "expires_at": simulation.expires_at.isoformat(),
+        "topics": simulation.get_topics(),
+        "server_epoch": simulation_manager.get_server_epoch(),
+        "pending_events_count": simulation.buffer.total_events,
+        "pending_events_bytes": simulation.buffer.total_bytes,
+        "operational_error": simulation.current_run.operational_error.model_dump()
+        if simulation.current_run.operational_error
         else None,
     }
 
 
-@app.post("/v1/factories/{factory_id}/start")
-async def start_factory(
-    factory_id: str,
+@app.post("/v1/simulations/{simulation_id}/start")
+async def start_simulation(
+    simulation_id: str,
     req: CommandRequest = CommandRequest(),
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
@@ -230,8 +230,8 @@ async def start_factory(
         )
     require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.execute_command(
-        factory_id=factory_id,
+    status_code, body = await simulation_manager.execute_command(
+        simulation_id=simulation_id,
         attendee_id=attendee_id,
         command="start",
         body=req.model_dump(),
@@ -240,9 +240,9 @@ async def start_factory(
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.post("/v1/factories/{factory_id}/pause")
-async def pause_factory(
-    factory_id: str,
+@app.post("/v1/simulations/{simulation_id}/pause")
+async def pause_simulation(
+    simulation_id: str,
     req: CommandRequest = CommandRequest(),
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
@@ -255,8 +255,8 @@ async def pause_factory(
         )
     require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.execute_command(
-        factory_id=factory_id,
+    status_code, body = await simulation_manager.execute_command(
+        simulation_id=simulation_id,
         attendee_id=attendee_id,
         command="pause",
         body=req.model_dump(),
@@ -265,9 +265,9 @@ async def pause_factory(
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.post("/v1/factories/{factory_id}/stop")
-async def stop_factory(
-    factory_id: str,
+@app.post("/v1/simulations/{simulation_id}/stop")
+async def stop_simulation(
+    simulation_id: str,
     req: CommandRequest = CommandRequest(),
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
@@ -280,8 +280,8 @@ async def stop_factory(
         )
     require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.execute_command(
-        factory_id=factory_id,
+    status_code, body = await simulation_manager.execute_command(
+        simulation_id=simulation_id,
         attendee_id=attendee_id,
         command="stop",
         body=req.model_dump(),
@@ -290,9 +290,9 @@ async def stop_factory(
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.post("/v1/factories/{factory_id}/restart")
-async def restart_factory(
-    factory_id: str,
+@app.post("/v1/simulations/{simulation_id}/restart")
+async def restart_simulation(
+    simulation_id: str,
     req: RestartCommandRequest = RestartCommandRequest(),
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
@@ -305,8 +305,8 @@ async def restart_factory(
         )
     require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.execute_command(
-        factory_id=factory_id,
+    status_code, body = await simulation_manager.execute_command(
+        simulation_id=simulation_id,
         attendee_id=attendee_id,
         command="restart",
         body=req.model_dump(),
@@ -315,9 +315,9 @@ async def restart_factory(
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.put("/v1/factories/{factory_id}/connection", status_code=202)
-async def rotate_factory_connection(
-    factory_id: str,
+@app.put("/v1/simulations/{simulation_id}/connection", status_code=202)
+async def rotate_simulation_connection(
+    simulation_id: str,
     req: RotateConnectionRequest,
     idempotency_key: Optional[str] = Header(None),
     x_server_epoch: Optional[str] = Header(None),
@@ -330,8 +330,8 @@ async def rotate_factory_connection(
         )
     require_epoch(x_server_epoch)
 
-    status_code, body = await factory_manager.rotate_connection(
-        factory_id=factory_id,
+    status_code, body = await simulation_manager.rotate_connection(
+        simulation_id=simulation_id,
         attendee_id=attendee_id,
         bootstrap_server=req.bootstrap_server,
         producer_key=req.producer_credentials.api_key,
@@ -396,11 +396,11 @@ async def admin_dashboard():
     if rules:
         robot_prices = {rm.type: rm.price_in_coins for rm in rules.robot_metadata}
 
-    # Build per-factory rows (summary + expandable detail)
+    # Build per-simulation rows (summary + expandable detail)
     rows_html = ""
-    factories = list(factory_manager.factories.values()) if factory_manager else []
+    simulations = list(simulation_manager.simulations.values()) if simulation_manager else []
 
-    for idx, f in enumerate(factories):
+    for idx, f in enumerate(simulations):
         f.check_expiry()
         run = f.current_run
         row_id = f"row-{idx}"
@@ -514,9 +514,9 @@ async def admin_dashboard():
                 </div>
 
                 <div class="detail-section">
-                  <div class="detail-heading">Factory</div>
+                  <div class="detail-heading">Simulation</div>
                   <table class="meta-table">
-                    <tr><td>Factory ID</td><td class="mono small">{f.factory_id}</td></tr>
+                    <tr><td>Simulation ID</td><td class="mono small">{f.simulation_id}</td></tr>
                     <tr><td>Generation</td><td>{run.run_generation}</td></tr>
                     <tr><td>Sim time</td><td>{sim_str}</td></tr>
                     <tr><td>Buf events</td><td>{f.buffer.total_events}</td></tr>
@@ -531,12 +531,12 @@ async def admin_dashboard():
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="9" class="empty">No active factories — waiting for attendees to connect</td></tr>'
+        rows_html = '<tr><td colspan="9" class="empty">No active simulations — waiting for attendees to connect</td></tr>'
 
-    total      = len(factories)
-    active     = sum(1 for f in factories if not f.is_expired)
+    total      = len(simulations)
+    active     = sum(1 for f in simulations if not f.is_expired)
     enrolled   = len(enrollment_config.enrollments) if enrollment_config else 0
-    debug_mode = factory_manager.debug_mode if factory_manager else False
+    debug_mode = simulation_manager.debug_mode if simulation_manager else False
     debug_js   = "true" if debug_mode else "false"
     debug_cls  = "dbg-on" if debug_mode else "dbg-off"
 
@@ -654,7 +654,7 @@ async def admin_dashboard():
   <span class="url-hint">http://localhost:8080/admin</span>
   <div class="debug-wrap">
     <span class="debug-label">Debug inventory</span>
-    <label class="toggle" title="When enabled, factory.state events carry ground-truth inventory so the attendee screen shows server values without Flink">
+    <label class="toggle" title="When enabled, simulation.state events carry ground-truth inventory so the attendee screen shows server values without Flink">
       <input type="checkbox" id="debug-toggle" {'checked' if debug_mode else ''} onchange="setDebugMode(this.checked)">
       <span class="slider"></span>
     </label>
@@ -662,7 +662,7 @@ async def admin_dashboard():
   </div>
 </header>
 <div class="meta">
-  <div class="kpi"><div class="label">Active factories</div><div class="value">{total}</div></div>
+  <div class="kpi"><div class="label">Active simulations</div><div class="value">{total}</div></div>
   <div class="kpi"><div class="label">Attendees online</div><div class="value">{active}/{enrolled}</div></div>
 </div>
 <div class="wrap">
@@ -772,8 +772,8 @@ async def toggle_debug_mode(request: Request):
     If no body (or missing key), toggles the current value.
     Returns the new state.
     """
-    if factory_manager is None:
-        raise HTTPException(status_code=503, detail="Factory manager not ready")
+    if simulation_manager is None:
+        raise HTTPException(status_code=503, detail="Simulation manager not ready")
 
     try:
         body = await request.json()
@@ -782,24 +782,24 @@ async def toggle_debug_mode(request: Request):
         enabled = None
 
     if enabled is None:
-        factory_manager.debug_mode = not factory_manager.debug_mode
+        simulation_manager.debug_mode = not simulation_manager.debug_mode
     else:
-        factory_manager.debug_mode = bool(enabled)
+        simulation_manager.debug_mode = bool(enabled)
 
-    return JSONResponse({"debug_mode": factory_manager.debug_mode})
+    return JSONResponse({"debug_mode": simulation_manager.debug_mode})
 
 
 @app.get("/admin/debug", response_class=JSONResponse, include_in_schema=False)
 async def get_debug_mode():
     """Return current debug mode state."""
-    if factory_manager is None:
-        raise HTTPException(status_code=503, detail="Factory manager not ready")
-    return JSONResponse({"debug_mode": factory_manager.debug_mode})
+    if simulation_manager is None:
+        raise HTTPException(status_code=503, detail="Simulation manager not ready")
+    return JSONResponse({"debug_mode": simulation_manager.debug_mode})
 
 
 @app.get("/v1/operations/{operation_id}")
 async def get_operation(operation_id: str, attendee_id: str = Depends(get_current_attendee)):
-    op = factory_manager.operations.get(operation_id)
+    op = simulation_manager.operations.get(operation_id)
     if not op or op.owner_attendee_id != attendee_id:
         raise HTTPException(
             status_code=404,
@@ -808,10 +808,10 @@ async def get_operation(operation_id: str, attendee_id: str = Depends(get_curren
 
     return {
         "operation_id": op.operation_id,
-        "factory_id": op.factory_id,
+        "simulation_id": op.simulation_id,
         "status": op.status,
         "error_code": op.error_code,
         "error_message": op.error_message,
         "created_at": op.created_at.isoformat(),
-        "server_epoch": factory_manager.get_server_epoch(),
+        "server_epoch": simulation_manager.get_server_epoch(),
     }

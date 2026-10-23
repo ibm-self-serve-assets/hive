@@ -2,12 +2,12 @@
 
 ## Overview & Goal
 
-In Level 2 you used the Confluent Cloud UI to build a job-duration pipeline that tells you _how long_ each factory job took.  
+In Level 2 you used the Confluent Cloud UI to build a job-duration pipeline that tells you _how long_ each simulation job took.  
 Level 3 adds **live inventory**: how many resources, parts, and robots are in stock at this moment.
 
 **The Problem:** Raw events only record what was produced or consumed at a single instant.  There is no event that says "there are currently 7 units of copper in stock."
 
-**Your Objective:** Use Apache Flink stateful aggregations to maintain a continuously updated inventory balance for every item in the factory:
+**Your Objective:** Use Apache Flink stateful aggregations to maintain a continuously updated inventory balance for every item in the simulation:
 
 - **Resources** arrive via `gathering.completed` and are consumed when manufacturing stations start jobs (`manufacturing.started` inputs).
 - **Parts** arrive via `manufacturing.completed` and are consumed when assembly starts (`assembly.started` inputs).
@@ -32,7 +32,7 @@ assembly-completed ────────────► Flink stateful SUM �
 ## Prerequisites
 
 - Level 2 is complete: `hive_job_durations` exists and the stream processing statement is **Running**.
-- The factory simulation is running and events are flowing.
+- The simulation simulation is running and events are flowing.
 - The Confluent CLI is installed (instructions below).
 
 ---
@@ -191,7 +191,7 @@ If you restarted the simulation, the table also keeps rows from earlier runs. Ea
 
 **4. Close the results and the shell.** Press `Q` to close the results. Then type `EXIT;` or press `Ctrl+D` to close the shell.
 
-If you see rows with changing quantities, Level 3 is working. Open **Level 3** in the dashboard to see the same numbers on the factory floor.
+If you see rows with changing quantities, Level 3 is working. Open **Level 3** in the dashboard to see the same numbers on the simulation floor.
 
 > **Gate Check:** The dashboard Level 3 view unlocks once the `hive_inventory_balances` topic exists. Running `01_create_sink.sql` (Step 3) creates it.
 

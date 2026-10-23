@@ -12,13 +12,13 @@
 --                          inputs consumed by assembly-started
 --     Job 3 — Robots     : assembly-completed accumulation (never consumed)
 --
---   Each job maintains a running SUM keyed by (factory_id, run_id, item_id)
+--   Each job maintains a running SUM keyed by (simulation_id, run_id, item_id)
 --   and writes upsert rows to `hive_inventory_balances`.  The row for each
 --   item is continuously updated as new events arrive.
 --
 -- BEFORE YOU RUN
 --   * Step 1 (01_create_sink.sql) has completed successfully.
---   * The factory simulation is running and events are flowing.
+--   * The simulation simulation is running and events are flowing.
 --   * Same CLI context as Step 1 (environment, cluster, compute pool).
 --
 -- HOW INPUTS ARE EXTRACTED
@@ -44,7 +44,7 @@ BEGIN
 -- ============================================================================
 INSERT INTO `hive_inventory_balances`
 SELECT
-  factory_id,
+  simulation_id,
   run_id,
   'resource'  AS item_type,
   item_id,
@@ -53,7 +53,7 @@ FROM (
 
   -- +quantity: each gathering completion delivers resources
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                     AS item_id,
     CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.quantity') AS BIGINT)        AS delta
@@ -64,7 +64,7 @@ FROM (
 
   -- -quantity: each manufacturing job start consumes inputs (energy)
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'energy'                                                                        AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.energy'),   '0') AS BIGINT) AS delta
@@ -74,7 +74,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'resin'                                                                         AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.resin'),    '0') AS BIGINT) AS delta
@@ -84,7 +84,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'metals'                                                                        AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.metals'),   '0') AS BIGINT) AS delta
@@ -94,7 +94,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'copper'                                                                        AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.copper'),   '0') AS BIGINT) AS delta
@@ -104,7 +104,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'silicon'                                                                       AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.silicon'),  '0') AS BIGINT) AS delta
@@ -112,7 +112,7 @@ FROM (
   WHERE JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.silicon') IS NOT NULL
 
 )
-GROUP BY factory_id, run_id, item_id;
+GROUP BY simulation_id, run_id, item_id;
 
 -- ============================================================================
 -- JOB 2: Parts inventory
@@ -121,7 +121,7 @@ GROUP BY factory_id, run_id, item_id;
 -- ============================================================================
 INSERT INTO `hive_inventory_balances`
 SELECT
-  factory_id,
+  simulation_id,
   run_id,
   'part'      AS item_type,
   item_id,
@@ -130,7 +130,7 @@ FROM (
 
   -- +quantity: each manufacturing completion produces a part
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.part_id')                         AS item_id,
     CAST(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.quantity') AS BIGINT)        AS delta
@@ -141,7 +141,7 @@ FROM (
 
   -- -quantity: each assembly job start consumes parts (chassis)
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'chassis'                                                                       AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.chassis'),  '0') AS BIGINT) AS delta
@@ -151,7 +151,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'electronics'                                                                   AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.electronics'), '0') AS BIGINT) AS delta
@@ -161,7 +161,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'actuator'                                                                      AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.actuator'), '0') AS BIGINT) AS delta
@@ -171,7 +171,7 @@ FROM (
   UNION ALL
 
   SELECT
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
     'battery'                                                                       AS item_id,
     -CAST(COALESCE(JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.battery'),  '0') AS BIGINT) AS delta
@@ -179,7 +179,7 @@ FROM (
   WHERE JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.inputs.battery') IS NOT NULL
 
 )
-GROUP BY factory_id, run_id, item_id;
+GROUP BY simulation_id, run_id, item_id;
 
 -- ============================================================================
 -- JOB 3: Robot inventory
@@ -188,7 +188,7 @@ GROUP BY factory_id, run_id, item_id;
 -- ============================================================================
 INSERT INTO `hive_inventory_balances`
 SELECT
-  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                              AS factory_id,
+  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                              AS simulation_id,
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                  AS run_id,
   'robot'                                                                         AS item_type,
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                       AS item_id,
@@ -196,7 +196,7 @@ SELECT
 FROM `assembly-completed`
 WHERE JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type') IS NOT NULL
 GROUP BY
-  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id'),
+  JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id'),
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id'),
   JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type');
 

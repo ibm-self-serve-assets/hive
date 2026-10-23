@@ -2,15 +2,15 @@ import pytest
 import uuid
 import hashlib
 from server.models import EventEnvelope
-from server.buffer import FactoryEventBuffer
+from server.buffer import SimulationEventBuffer
 
 
-def make_test_event(factory_id: str, seq: int) -> EventEnvelope:
+def make_test_event(simulation_id: str, seq: int) -> EventEnvelope:
     return EventEnvelope(
         event_id=str(uuid.uuid4()),
         event_type="test.event",
         schema_version=1,
-        factory_id=factory_id,
+        simulation_id=simulation_id,
         server_epoch=str(uuid.uuid4()),
         run_id=str(uuid.uuid4()),
         run_generation=1,
@@ -25,7 +25,7 @@ def make_test_event(factory_id: str, seq: int) -> EventEnvelope:
 
 def test_buffer_accounting_and_limits():
     fid = str(uuid.uuid4())
-    buf = FactoryEventBuffer(max_events=3, max_bytes=100000)
+    buf = SimulationEventBuffer(max_events=3, max_bytes=100000)
 
     e1 = make_test_event(fid, 1)
     e2 = make_test_event(fid, 2)

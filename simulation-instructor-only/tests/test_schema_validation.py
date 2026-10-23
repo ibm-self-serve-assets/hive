@@ -20,11 +20,11 @@ def test_schema_conformance(schemas):
     envelope_schema, payloads_schema = schemas
     envelope_validator = Draft202012Validator(envelope_schema)
     # Schema definitions are keyed by the exact event_type string emitted on the wire.
-    # factory.state and connection.test are infrastructure events validated separately.
+    # simulation.state and connection.test are infrastructure events validated separately.
     payload_validators = {
         event_type: Draft202012Validator(defn)
         for event_type, defn in payloads_schema["topics"].items()
-        if event_type != "factory.state"
+        if event_type != "simulation.state"
     }
 
     seq = 0
@@ -34,17 +34,17 @@ def test_schema_conformance(schemas):
         return seq
 
     sim = SimulationRun(
-        factory_id="11111111-1111-1111-1111-111111111111",
+        simulation_id="11111111-1111-1111-1111-111111111111",
         server_epoch="22222222-2222-2222-2222-222222222222",
         run_id="33333333-3333-3333-3333-333333333333",
         run_generation=1,
         lifecycle_status="running",
     )
 
-    # 1. Initial snapshot — validate envelope and factory.state payload
+    # 1. Initial snapshot — validate envelope and simulation.state payload
     _, snap_event = sim.create_snapshot_event(event_seq_generator=gen_seq)
     envelope_validator.validate(snap_event.model_dump())
-    Draft202012Validator(payloads_schema["topics"]["factory.state"]).validate(snap_event.payload)
+    Draft202012Validator(payloads_schema["topics"]["simulation.state"]).validate(snap_event.payload)
 
     # 2. Scheduling events
     events = sim.initial_scheduling(event_seq_generator=gen_seq)
@@ -67,7 +67,7 @@ def test_schema_conformance(schemas):
         seen_types.add(ev.event_type)
         if ev.event_type in payload_validators:
             payload_validators[ev.event_type].validate(ev.payload)
-        elif ev.event_type != "factory.state":
+        elif ev.event_type != "simulation.state":
             # Any non-snapshot event type must have a schema definition
             pytest.fail(f"No payload schema definition for event_type '{ev.event_type}'")
 
@@ -91,5 +91,5 @@ def test_schema_conformance(schemas):
 
     # 4. Final snapshot conforms
     _, final_snap = sim.create_snapshot_event(event_seq_generator=gen_seq)
-    Draft202012Validator(payloads_schema["topics"]["factory.state"]).validate(final_snap.payload)
+    Draft202012Validator(payloads_schema["topics"]["simulation.state"]).validate(final_snap.payload)
     assert final_snap.payload["completed_robots"]["last_robot_id"] == "engineer"

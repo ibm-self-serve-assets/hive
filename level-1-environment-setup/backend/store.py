@@ -3,7 +3,7 @@ In-memory store for the basic connect-simulation dashboard.
 
 Tracks only what the design comp needs:
   - sim_time_minutes    from any event envelope
-  - factory lifecycle    from factory.state
+  - simulation lifecycle    from simulation.state
   - completed counts     from *.completed event payloads
   - in-progress flags    from *.started / *.completed pairing
   - blocked state        from *.blocked event payloads
@@ -42,7 +42,7 @@ EVENT_LOG_LIMIT = 100
 
 class DashboardStore:
     def __init__(self) -> None:
-        self.active_factory_id: Optional[str] = None
+        self.active_simulation_id: Optional[str] = None
         self.server_epoch: Optional[str] = None
         # run_id of the most recent event; matches the run_id column in hive_job_durations
         self.run_id: Optional[str] = None
@@ -51,7 +51,7 @@ class DashboardStore:
         self.latest_sim_time_minutes: int = 0
         self.run_generation: int = 0
 
-        # lifecycle — from factory.state
+        # lifecycle — from simulation.state
         self.lifecycle_status: str = "paused"
         self.running: bool = False
 
@@ -100,11 +100,11 @@ class DashboardStore:
         self.event_topics_missing: List[str] = []
 
         # Level 2 gate: the hive_job_durations topic exists (created by the attendee's Flink SQL).
-        # Independent of the factory run, so reset() leaves it alone.
+        # Independent of the simulation run, so reset() leaves it alone.
         self.hive_job_durations_ready: bool = False
 
         # Level 3 gate: the hive_inventory_balances topic exists.
-        # Independent of the factory run, so reset() leaves it alone.
+        # Independent of the simulation run, so reset() leaves it alone.
         self.hive_inventory_balances_ready: bool = False
 
         # Dedup
@@ -138,10 +138,10 @@ class DashboardStore:
         if env.event_type == "connection.test":
             return False
 
-        # Factory identity guard
-        if self.active_factory_id and env.factory_id != self.active_factory_id:
+        # Simulation identity guard
+        if self.active_simulation_id and env.simulation_id != self.active_simulation_id:
             return False
-        if not self.active_factory_id and self.server_epoch and env.server_epoch != self.server_epoch:
+        if not self.active_simulation_id and self.server_epoch and env.server_epoch != self.server_epoch:
             return False
 
         # Dedup
@@ -182,11 +182,11 @@ class DashboardStore:
             log.insert(0, env.model_dump())
             del log[EVENT_LOG_LIMIT:]
 
-        if et == "factory.state":
+        if et == "simulation.state":
             self.lifecycle_status = p.get("lifecycle_status", self.lifecycle_status)
             self.running = p.get("running", self.running)
             # When the server is in debug mode it embeds ground-truth inventory
-            # directly in the factory.state payload so the attendee screen can
+            # directly in the simulation.state payload so the attendee screen can
             # show it without waiting for a Flink hive_inventory_balances topic.
             debug_inv = p.get("debug_mode_instructor_only")
             if debug_inv and isinstance(debug_inv, dict) and self.run_id:
@@ -285,7 +285,7 @@ class DashboardStore:
                 self.assembly_blocked[sid] = missing
             return True
 
-        # factory.initialized, etc. — still counted as activity
+        # simulation.initialized, etc. — still counted as activity
         return True
 
     def ingest_calculated_value(self, subject: str, elapsed_sim_minutes: int) -> bool:
@@ -321,7 +321,7 @@ class DashboardStore:
     def snapshot(self) -> Dict[str, Any]:
         return {
             "stream_health": self.get_stream_health(),
-            "active_factory_id": self.active_factory_id,
+            "active_simulation_id": self.active_simulation_id,
             "run_id": self.run_id,
             "run_generation": self.run_generation,
             "sim_time_minutes": self.latest_sim_time_minutes,

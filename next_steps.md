@@ -5,7 +5,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
 - **Unified Dashboard Architecture**: Single UI install in `level-1-environment-setup/` with dropdown for Level 1, Level 2, Level 3 progression.
 - **Automated Validation**: Tests validate that attendees have completed steps for the selected level to function.
 - **Levels Organization**:
-  - `level-1-environment-setup/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, factory controls, auto-connection.
+  - `level-1-environment-setup/`: Unified dashboard (FastAPI backend + React/TypeScript/Vite frontend); credentials, launch, SSE events, simulation controls, auto-connection.
   - `level-2-intro-to-flink/`: Confluent Flink interval joins, job durations correlation (`01_create_sink.sql`, `02_run_jobs.sql`, `03_validate.sql`).
   - `level-3-hive-inventory/`: Flink stateful aggregations into the `hive_inventory_balances` upsert topic.
   - `level-4-gamify/` (empty) and `level-5-tableflow/` (empty): folders created, nothing written yet. See "Level numbering" below.
@@ -22,7 +22,7 @@ Running notes for us as the work progresses. Not for attendees or instructors.
 - **Audience.**
   - **Simulation server (`simulation-instructor-only`, including `orders-calculator/`) is written for instructors.** It describes hidden state, server internals, and the answer key.
   - **Levels 0, 1, 2, 3 (and the Level 4 screen) are written for attendees.** They do not reveal the simulation's hidden counters or internals.
-- **Hidden internal state stays out of the payloads.** Attendees receive only the events and the `factory.state` snapshot as currently defined in `spec-shared/schemas/event_payloads.json`. The simulation's internal counters (for example the per-station staging carts, see below) are not added to any event or snapshot, and are not recomputed in the attendee dashboard backend either. Do not add fields such as `staged_inputs` to the schema, the models, or the dashboard.
+- **Hidden internal state stays out of the payloads.** Attendees receive only the events and the `simulation.state` snapshot as currently defined in `spec-shared/schemas/event_payloads.json`. The simulation's internal counters (for example the per-station staging carts, see below) are not added to any event or snapshot, and are not recomputed in the attendee dashboard backend either. Do not add fields such as `staged_inputs` to the schema, the models, or the dashboard.
 - **One source of truth.** Don't duplicate values that live in `simulation_rules.json` or `event_payloads.json` in notes or docs; point to the file instead.
 - **Attendee SQL is run in the Confluent Flink workspace, one statement per run.** Prefer a small number of files that each run once.
 
@@ -48,7 +48,7 @@ Then attendees rebuild inventory themselves from the events (see Architecture).
 
 The docs and the dashboard disagree:
 
-- `Hive_Workshop_Overview.md` plans **Level 4 = Tableflow**, Level 5 = headless agent and IBM Bob, Level 6 = Bob runs the factory.
+- `Hive_Workshop_Overview.md` plans **Level 4 = Tableflow**, Level 5 = headless agent and IBM Bob, Level 6 = Bob runs the simulation.
 - The dashboard's **Level 4** is the gamified orders / treasury screen, and the folders on disk are `level-4-gamify/` and `level-5-tableflow/`.
 
 Pick one numbering and update the overview, the folder names, the registry label and the Tableflow roadmap item together.
@@ -58,12 +58,12 @@ Pick one numbering and update the overview, the folder names, the registry label
 Both are in `spec-shared/schemas/event_payloads.json`:
 
 - `manufacturing.resources.acquired` and `assembly.parts.acquired`: emitted each time a station's cart receives a delta of inputs. They carry only the delta (`inputs_grabbed`), not the cart total, so the hidden-cart rule still holds. The dashboard backend (`store.py`) accepts them with no state change. Check that they are included in `provision_topics` / `delete_topics` for Level 1 and in the Level 1 docs.
-- `debug_mode_instructor_only` on `factory.state`: ground-truth inventory, `null` unless the instructor turns debug mode on in `/admin`. It violates "hidden state stays out of the payloads" when on, so it must stay off in workshops. `store.py` already reads it to bypass Flink inventory. Document this in `INSTRUCTOR_GUIDE.md`.
+- `debug_mode_instructor_only` on `simulation.state`: ground-truth inventory, `null` unless the instructor turns debug mode on in `/admin`. It violates "hidden state stays out of the payloads" when on, so it must stay off in workshops. `store.py` already reads it to bypass Flink inventory. Document this in `INSTRUCTOR_GUIDE.md`.
 - `simulation_rules.json` gained `simulation_time.max_sim_weeks` (2). The server (`rules.py`) and the orders calculator both read it.
 
 ## Orders calculator (new)
 
-`simulation-instructor-only/orders-calculator/` (docs in `orders_calculator.md`) computes what the factory can produce and builds an order schedule from it. Key results with the current rules:
+`simulation-instructor-only/orders-calculator/` (docs in `orders_calculator.md`) computes what the simulation can produce and builds an order schedule from it. Key results with the current rules:
 
 - The energy supply is a hard cap on throughput (about 65 robots per sim day). Every station maxed, so no purchase plan beats it.
 - Greedy-optimal play reaches that cap at sim minute 929 (about 15.5 sim hours; 15.5 real minutes at 1x). Output is flat after that.
@@ -102,9 +102,9 @@ On the Level 4 screen (`levels/level4/Level4Screen.tsx`), the **Robot inventory*
 Implemented in `simulation-instructor-only/server/simulation.py` (`SimulationRun.carts`, `_stage_inputs`, `_schedule_parts_manufacturing`, `_schedule_robot_assembly`).
 
 - The old all-or-none check starved multi-unit recipes: stations needing only 1 of a shared resource (metals) consumed every single delivery on arrival, so a station needing several (actuator fabrication) never accumulated enough. Robot assembly had the same issue waiting for all its parts at once.
-- Each station now has an internal cart. On every scheduling pass an idle station moves `min(still needed, available)` of each required input from factory stock into its cart, and starts its job (consuming the cart) once the cart holds the full recipe. Assembly does the same with finished parts.
+- Each station now has an internal cart. On every scheduling pass an idle station moves `min(still needed, available)` of each required input from simulation stock into its cart, and starts its job (consuming the cart) once the cart holds the full recipe. Assembly does the same with finished parts.
 - Manufacturing stations are served fewest-completed-parts first. A station keeps a partial cart until the recipe is complete.
-- Staged items leave factory stock, so `resources` and `parts` in `factory.state` are net of carts. A station's `missing_inputs` (in `manufacturing.blocked` / `assembly.blocked` and in the snapshot) now means what its cart still lacks.
+- Staged items leave simulation stock, so `resources` and `parts` in `simulation.state` are net of carts. A station's `missing_inputs` (in `manufacturing.blocked` / `assembly.blocked` and in the snapshot) now means what its cart still lacks.
 - **Carts are hidden from attendees.** There is no cart field in any event or snapshot, and none is derived in the dashboard (see Working agreements). Attendees can only reconstruct totals from events; the per-station breakdown stays internal.
 - Tests added in `simulation-instructor-only/tests/test_simulation.py`; the resin conservation test counts resin held in carts.
 - Docs updated: `02_simulation.md`, `03_data.md`, `INSTRUCTOR_GUIDE.md`, `simulation-instructor-only/README.md`. The old text described the rotating tie-break cursor from the last commit; the working tree had already replaced it with fewest-completed-first ordering, so the docs now describe that. The unused `SimulationRun.station_cursor` was removed.
@@ -158,7 +158,7 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 
 ## Simulation notes: assembly and `duration_ms`
 
-- `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `factory.state`, so it now requires 6 stations.
+- `simulation_rules.json` has a single `assembly` list (like `resources` and `manufacturing`) covering `worker_assembly` (engineer) and `forager_assembly` (forager). The forager placeholder is gone. The forager is scheduled with the same cart logic as manufacturing: each pass moves what is available into its cart until the recipe is complete. Both stations are in `simulation.state`, so it now requires 6 stations.
 - `duration_ms` was removed from every event and the snapshot. Durations stay internal to the simulation. Attendees derive elapsed time from the `started` and `completed` sim times (this is what the Level 2 `hive_job_durations` join does).
 - Restart the simulation and the dashboard backend to pick these changes up.
 - Checked: the Level 3 backend and frontend work with a sixth station.
@@ -168,7 +168,7 @@ We chose option 1 as the base. Reason: with shared components, improving a compo
 Do not copy recipe quantities, delivery intervals or durations into these notes. Look them up in:
 
 - `simulation-instructor-only/schemas/simulation_rules.json`: resources, delivery intervals and quantities, recipes, job durations.
-- `spec-shared/schemas/event_payloads.json`: event and `factory.state` payload shapes.
+- `spec-shared/schemas/event_payloads.json`: event and `simulation.state` payload shapes.
 - `simulation-instructor-only/orders-calculator/orders_calculator.md`: throughput model and order generation (derived from `simulation_rules.json`; do not copy its numbers elsewhere).
 
 ## Open items & roadmap
@@ -188,11 +188,11 @@ Do not copy recipe quantities, delivery intervals or durations into these notes.
 
 The current deployment target is IBM Cloud Code Engine (`Dockerfile` header, `specifications/07_code_engine.md`). Cloud Run needs these decided or changed:
 
-- **One instance only.** The server is memory-only, so set min instances = 1 and max instances = 1 (the Code Engine spec says the same). Cloud Run's default is to scale out, which would split the factories across processes.
+- **One instance only.** The server is memory-only, so set min instances = 1 and max instances = 1 (the Code Engine spec says the same). Cloud Run's default is to scale out, which would split the simulations across processes.
 - **CPU always allocated.** The clock ticks and Kafka sends happen in a background task with no HTTP traffic. Cloud Run throttles CPU outside requests by default, so use "CPU always allocated" (instance-based billing), or the sim will stall between requests.
 - **Request timeout.** Check any long-lived connection (the dashboard backend's event stream, if it holds one open to this server) against Cloud Run's request timeout (up to 60 minutes). A run lasts 2.8 to 5.6 real hours.
 - **One worker process, no reload.** Same as the Code Engine spec.
-- **Redeploy resets all factories.** Cloud Run keeps old and new revisions overlapping while it shifts traffic, which the spec forbids. Send 100% of traffic to the new revision only after the old one is stopped, or accept a maintenance window.
+- **Redeploy resets all simulations.** Cloud Run keeps old and new revisions overlapping while it shifts traffic, which the spec forbids. Send 100% of traffic to the new revision only after the old one is stopped, or accept a maintenance window.
 - **Secrets.** Organizer enrollment/token hashes and cluster profiles go into Secret Manager, not the image.
 - **Fix the image first.** The `Dockerfile` has `COPY ../spec_shared/ ./spec_shared/`, which cannot work (a Docker build context cannot read its parent, and the folder is `spec-shared`). Build from the repo root or copy the shared folder in.
 - **Update the docs:** `07_code_engine.md` (or add a Cloud Run page), `README.md`, and `INSTRUCTOR_GUIDE.md`. Keep one deployment page per platform.
@@ -200,22 +200,22 @@ The current deployment target is IBM Cloud Code Engine (`Dockerfile` header, `sp
 
 ### 2. Load test for 150 users without 150 Confluent Cloud clusters
 
-Goal: show that one instance holds 150 factories running at once. Real Confluent connections are not needed to test the simulation and API load.
+Goal: show that one instance holds 150 simulations running at once. Real Confluent connections are not needed to test the simulation and API load.
 
-- **Replace the Kafka producer, not the server.** `FactoryKafkaProducer` (`server/producer.py`) already falls back to an in-memory mock when `confluent_kafka` is missing. Add an explicit switch, such as `KAFKA_MODE=mock` or `null`, that makes `FactoryKafkaProducer` discard messages (optionally after a fixed fake delay and a configurable failure rate). Use it only for load testing, and make sure it cannot be turned on in a workshop by accident.
-- **Cover the rest of the connect path.** Provisioning calls `verify_permissions_and_topics`, which talks to Kafka. The mock must return success without a network call, so factories reach the running state.
-- **Simulate 150 users.** A script (Locust or k6, or plain asyncio) that, for each virtual user, creates a factory, connects, starts it, polls the factory status and the admin page, then restarts it. Include pause and stop, and the dashboard backend's usual request pattern.
+- **Replace the Kafka producer, not the server.** `SimulationKafkaProducer` (`server/producer.py`) already falls back to an in-memory mock when `confluent_kafka` is missing. Add an explicit switch, such as `KAFKA_MODE=mock` or `null`, that makes `SimulationKafkaProducer` discard messages (optionally after a fixed fake delay and a configurable failure rate). Use it only for load testing, and make sure it cannot be turned on in a workshop by accident.
+- **Cover the rest of the connect path.** Provisioning calls `verify_permissions_and_topics`, which talks to Kafka. The mock must return success without a network call, so simulations reach the running state.
+- **Simulate 150 users.** A script (Locust or k6, or plain asyncio) that, for each virtual user, creates a simulation, connects, starts it, polls the simulation status and the admin page, then restarts it. Include pause and stop, and the dashboard backend's usual request pattern.
 - **Match real behaviour.** Use 1x speed and run for at least one full sim week (2.8 real hours), or a shorter window under load to find limits, then one long soak run.
 - **Measure:**
-  - Tick lag: does the sim clock stay at 1 sim minute per real second with 150 factories? This is the key number.
+  - Tick lag: does the sim clock stay at 1 sim minute per real second with 150 simulations? This is the key number.
   - CPU and memory per instance, and the memory growth over the soak.
   - Request latency (p50, p95, p99) and error rate.
   - The buffer fill and drops against `FACTORY_BUFFER_LIMIT_EVENTS` and `FACTORY_BUFFER_LIMIT_BYTES`.
-  - Event volume per second across all factories. This is also the load Confluent Cloud will see in a real workshop, so compare it with the cluster's throughput limits.
-- **Check the guards.** `specifications/07_code_engine.md` calls for a maximum-factories limit, but `server/config.py` has no such setting (only the buffer limits and the TTL). Add it, then test the TTL cleanup and the rejection of the 151st user.
+  - Event volume per second across all simulations. This is also the load Confluent Cloud will see in a real workshop, so compare it with the cluster's throughput limits.
+- **Check the guards.** `specifications/07_code_engine.md` calls for a maximum-simulations limit, but `server/config.py` has no such setting (only the buffer limits and the TTL). Add it, then test the TTL cleanup and the rejection of the 151st user.
 - **What it will not show:** real Confluent latency, throttling, and authentication failures. Test those with a few real clusters (say 3 to 5 attendees) before the class.
 - **Pass criteria (to agree):** for example, tick lag under 1 sim minute, p95 latency under 500 ms, no dropped events, and memory flat over the soak.
-- **If it fails:** the server is single-process with in-process locks, so the fix is to make the tick loop cheaper or to shard factories across servers, not to scale out one shared instance.
+- **If it fails:** the server is single-process with in-process locks, so the fix is to make the tick loop cheaper or to shard simulations across servers, not to scale out one shared instance.
 
 ## Pending UI decisions
 

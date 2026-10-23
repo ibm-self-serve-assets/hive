@@ -2,7 +2,7 @@
 
 ## Overview & Goal
 
-In the Hive workshop, your factory simulation emits discrete lifecycle events across different Kafka topics as resources are collected, components are manufactured, and worker robots are assembled. 
+In the Hive workshop, your simulation simulation emits discrete lifecycle events across different Kafka topics as resources are collected, components are manufactured, and worker robots are assembled. 
 
 However, raw events only tell you what happened at an instant in time:
 - A `*.started` event announces that a job began.
@@ -27,7 +27,7 @@ However, raw events only tell you what happened at an instant in time:
 ## What You Are Building
 
 ### 1. Input Streams
-Your factory publishes raw JSON events across three production stages (defined in [`spec-shared/schemas/event_payloads.json`](../spec-shared/schemas/event_payloads.json)):
+Your simulation publishes raw JSON events across three production stages (defined in [`spec-shared/schemas/event_payloads.json`](../spec-shared/schemas/event_payloads.json)):
 
 | Production Stage | Started Topic | Completed Topic | What It Represents |
 |---|---|---|---|
@@ -35,7 +35,7 @@ Your factory publishes raw JSON events across three production stages (defined i
 | **Manufacturing** | `manufacturing-started` | `manufacturing-completed` | Component production at stations (frames, honeycombs) |
 | **Assembly** | `assembly-started` | `assembly-completed` | Final robot assembly lines |
 
-Each event is wrapped in a standard envelope containing metadata (`occurred_at`, `sim_time_minutes`, `factory_id`, `run_id`) and a `payload` containing `job_id` and the details of the job (resource, station or output).
+Each event is wrapped in a standard envelope containing metadata (`occurred_at`, `sim_time_minutes`, `simulation_id`, `run_id`) and a `payload` containing `job_id` and the details of the job (resource, station or output).
 
 ### 2. Output Stream (`hive_job_durations`)
 Flink produces a unified, append-only stream and backing Kafka topic named `hive_job_durations`:
@@ -117,7 +117,7 @@ You will first configure your environment and run the pipeline using the **Confl
 
 ### Step 2: Execute Flink SQL Statements in the Workspace
 
-#### A. Ensure Factory Data is Flowing
+#### A. Ensure Simulation Data is Flowing
 Start by ensuring your dashboard is:
 - Connected to the Hive simulation server and running (see [Level 1, Step 8](../level-1-environment-setup/README.md#step-8-run-your-simulation)).
 - The simulation timer should be incrementing up.
@@ -174,7 +174,7 @@ To inspect and verify your active streaming statement running on your compute po
 > **Dashboard unlock:** In the dashboard, choosing **Level 2** from the Levels dropdown hides the simulation controls and shows what is required, until the `hive_job_durations` topic exists. Running `01_create_sink.sql` creates it, so the controls appear shortly after that step. The topic holds no records until the simulation runs, so start it afterwards.
 
 > **⚠️ Gate Check — Do Not Proceed If Not Running:**
-> Your statement status must be **Running**. If it is stopped or missing, verify that your factory simulation is running, ensure your compute pool is active, and re-run [`flink/02_run_jobs.sql`](flink/02_run_jobs.sql).
+> Your statement status must be **Running**. If it is stopped or missing, verify that your simulation simulation is running, ensure your compute pool is active, and re-run [`flink/02_run_jobs.sql`](flink/02_run_jobs.sql).
 
 4. Click on the statement name to open its **Statement Details** page:
 
@@ -190,7 +190,7 @@ To inspect and verify your active streaming statement running on your compute po
 
 - **Statement CFU:** Shows Confluent Flink Units allocated to this pipeline.
 - **Messages behind (Lag):** Confirms Flink is processing in real time with near-zero lag.
-- **Messages in/out per minute:** Visualizes incoming factory events and derived duration records being produced.
+- **Messages in/out per minute:** Visualizes incoming simulation events and derived duration records being produced.
 
 ---
 

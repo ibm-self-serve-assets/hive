@@ -5,15 +5,15 @@ from pydantic import BaseModel, Field, model_validator
 
 class EventEnvelope(BaseModel):
     """Minimal envelope — resilient to schema variations and legacy messages."""
-    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_id: str = Field(default_simulation=lambda: str(uuid.uuid4()))
     event_type: str = ""
-    factory_id: Optional[str] = None
+    simulation_id: Optional[str] = None
     server_epoch: Optional[str] = None
     run_generation: int = 1
     event_sequence: int = 0
     sim_time_minutes: int = 0
     occurred_at: Optional[str] = None
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    payload: Dict[str, Any] = Field(default_simulation=dict)
 
     # Optional envelope fields present on some events
     state_revision: Optional[int] = None
@@ -34,7 +34,7 @@ class EventEnvelope(BaseModel):
         # If payload is missing or not a dict, gather non-envelope keys into payload
         if "payload" not in data or not isinstance(data.get("payload"), dict):
             known_envelope_keys = {
-                "event_id", "event_type", "factory_id", "server_epoch",
+                "event_id", "event_type", "simulation_id", "server_epoch",
                 "run_generation", "event_sequence", "sim_time_minutes",
                 "occurred_at", "state_revision", "run_id", "schema_version",
                 "causation_id", "payload",

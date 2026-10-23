@@ -23,12 +23,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLevelChange,
   isReady = true,
 }) => {
-  const { stream_health, lifecycle_status, running, sim_time_minutes, active_factory_id, run_id } = state;
+  const { stream_health, lifecycle_status, running, sim_time_minutes, active_simulation_id, run_id } = state;
   const isLive = stream_health === 'live';
   const isExpired = lifecycle_status === 'expired';
   const isStopped = lifecycle_status === 'stopped';
-  const hasFactory = Boolean(active_factory_id);
-  const hasState = stream_health !== 'awaiting_events' || hasFactory;
+  const hasSimulation = Boolean(active_simulation_id);
+  const hasState = stream_health !== 'awaiting_events' || hasSimulation;
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const isUnlocked = level.isUnlocked ? level.isUnlocked(state) : true;
   // Show sim/restart controls when unlocked; hide sim time until also ready
@@ -75,11 +75,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center gap-2 text-white text-sm mb-3">
             <span
               className={`w-2.5 h-2.5 rounded-full ${
-                stream_health === 'stale' ? 'bg-amber-400' : isLive || hasFactory ? 'bg-emerald-400' : 'bg-[#4A5A8A]'
+                stream_health === 'stale' ? 'bg-amber-400' : isLive || hasSimulation ? 'bg-emerald-400' : 'bg-[#4A5A8A]'
               }`}
             />
             <span>
-              {isLive ? 'Connected' : stream_health === 'stale' ? 'Stale' : hasFactory ? 'Connected' : 'Connecting'}
+              {isLive ? 'Connected' : stream_health === 'stale' ? 'Stale' : hasSimulation ? 'Connected' : 'Connecting'}
             </span>
           </div>
 
@@ -113,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={() => onSendCommand(running ? 'stop' : 'start')}
-                  disabled={isCommandPending || !hasFactory}
+                  disabled={isCommandPending || !hasSimulation}
                   className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-sm font-bold bg-[#2850B8] hover:bg-[#3460C8] text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
                   {running ? (
@@ -224,12 +224,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="border-t border-[#2A4896] px-5 py-3 text-[10px] text-white">
-        Closing this app does not pause the hosted factory.
-        {active_factory_id && (
+        Closing this app does not pause the hosted simulation.
+        {active_simulation_id && (
           <>
             <hr className="border-t border-white my-2" />
-            <div className="font-bold">Factory ID</div>
-            <div className="font-mono text-[11px] break-all">{active_factory_id}</div>
+            <div className="font-bold">Simulation ID</div>
+            <div className="font-mono text-[11px] break-all">{active_simulation_id}</div>
           </>
         )}
         {run_id && (

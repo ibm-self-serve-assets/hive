@@ -22,7 +22,7 @@ class EventEnvelope(BaseModel):
     event_id: str
     event_type: str
     schema_version: int = 1
-    factory_id: str
+    simulation_id: str
     server_epoch: str
     run_id: str
     run_generation: int
@@ -34,13 +34,13 @@ class EventEnvelope(BaseModel):
     payload: Dict[str, Any]
 
 
-class FactoryInitializedPayload(BaseModel):
+class SimulationInitializedPayload(BaseModel):
     operation_id: str
     attendee_id: str
     expires_at: str
     # Static station input recipes — keyed by station_id.
     # Published once so consumers know recipes without waiting for a job to start.
-    station_recipes: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    station_recipes: Dict[str, Dict[str, int]] = Field(default_simulation=dict)
 
 
 class ConnectionTestPayload(BaseModel):
@@ -95,7 +95,7 @@ class RobotAssembledPayload(BaseModel):
 
 
 class ResourcesAcquiredPayload(BaseModel):
-    """Emitted whenever resources are moved from factory stock into a manufacturing station's cart."""
+    """Emitted whenever resources are moved from simulation stock into a manufacturing station's cart."""
     station_id: str
     inputs_grabbed: Dict[str, int]  # delta: what was taken from stock this pass
 
@@ -123,7 +123,7 @@ class StationJobState(BaseModel):
 class StationState(BaseModel):
     station_id: str
     status: str  # idle, working, waiting_for_resources, waiting_for_parts
-    missing_inputs: Dict[str, int] = Field(default_factory=dict)
+    missing_inputs: Dict[str, int] = Field(default_simulation=dict)
     job: Optional[StationJobState] = None
 
 
@@ -138,7 +138,7 @@ class CompletedWorkersState(BaseModel):
 
 
 class ResourceDeliveryState(BaseModel):
-    """Per-resource delivery countdown, included in every factory snapshot."""
+    """Per-resource delivery countdown, included in every simulation snapshot."""
     name: str
     interval_sim_ms: int              # full cycle length in sim-ms (internal)
     next_delivery_sim_time_ms: int    # absolute sim-ms when next delivery fires (internal)
@@ -146,11 +146,11 @@ class ResourceDeliveryState(BaseModel):
     quantity: int               # units delivered each cycle
 
 
-class FactoryStatePayload(BaseModel):
+class SimulationStatePayload(BaseModel):
     lifecycle_status: str  # paused, running, stopped, expired
     running: bool
     operational_error: Optional[OperationalError] = None
-    resource_deliveries: List[ResourceDeliveryState] = Field(default_factory=list)
+    resource_deliveries: List[ResourceDeliveryState] = Field(default_simulation=list)
     resources: Dict[str, int]
     parts: Dict[str, int]
     stations: List[StationState]

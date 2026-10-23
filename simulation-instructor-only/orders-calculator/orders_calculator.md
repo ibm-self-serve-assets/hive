@@ -1,8 +1,8 @@
-# Orders Calculator & Factory Throughput Model
+# Orders Calculator & Simulation Throughput Model
 
 ## Overview
 
-The purpose of the **Orders Calculator** is to provide an analytical and simulation-based engine that determines the realistic output capacity of a Hive factory over time. Rather than generating random orders with arbitrary deadlines, orders must be directly grounded in the physical laws of the simulation—starting from initial conditions in `simulation-instructor-only/schemas/simulation_rules.json`, factoring in the economic expansion curve (reinvesting robot sale revenue into upgrades and station purchases), and projecting cumulative output across the simulation time horizon (1 to 2 weeks: 10,080 to 20,160 simulation minutes).
+The purpose of the **Orders Calculator** is to provide an analytical and simulation-based engine that determines the realistic output capacity of a Hive simulation over time. Rather than generating random orders with arbitrary deadlines, orders must be directly grounded in the physical laws of the simulation—starting from initial conditions in `simulation-instructor-only/schemas/simulation_rules.json`, factoring in the economic expansion curve (reinvesting robot sale revenue into upgrades and station purchases), and projecting cumulative output across the simulation time horizon (1 to 2 weeks: 10,080 to 20,160 simulation minutes).
 
 ---
 
@@ -59,7 +59,7 @@ At initial conditions:
 - **Chassis**: 1 chassis $\times$ 10 min = **10 min per robot**.
 - **Assembly**: 1 robot $\times$ 10 min = **10 min per robot**.
 
-**Initial Factory Cycle Time**:
+**Initial Simulation Cycle Time**:
 In the initial un-upgraded state, production is throttled by **Metals Gathering** (1 robot every 190 min) and **Actuator Fabrication** (1 station needs 80 min of machine time). The initial throughput is approximately **1 robot every ~190 to 200 simulation minutes** (~7.5 robots per 24-hour simulation day).
 
 ---
@@ -89,7 +89,7 @@ At any state $S$:
 2. Compute the rate for each part $p$ the same way, dividing by the number of $p$ in one robot:
    $$M_p(S) = \frac{\sum_{s \in \text{slots}(p)} 1/\text{interval}(s.\text{level})}{\text{recipe}(p)}$$
 3. Compute the assembly rate $A(S)$ as the **sum** over both assembly stations (`worker_assembly` and `forager_assembly`; the recipes are identical, so the engineer BOM is used for both).
-4. The factory throughput capacity is:
+4. The simulation throughput capacity is:
    $$\Phi(S) = \min \left( \min_r R_r(S), \min_p M_p(S), A(S) \right)$$
 5. Every possible single action $a$ (one upgrade or one added slot per station) is scored by marginal gain per coin:
    $$\frac{\Phi(S \oplus a) - \Phi(S)}{\text{Cost}(a)}$$
@@ -105,7 +105,7 @@ At any state $S$:
 - **Real time**: the clock is 1 real second = 1 sim minute, so 1 week takes 2.8 real hours and 2 weeks take 5.6 real hours (at 1x).
 
 ### 4.1 Hard capacity ceiling
-With the rules as they are, the best possible factory is 3 slots at Level 3 for each station. Its ceiling per resource is $3 \times (1/3\text{ min}) / \text{BOM}(r)$ robots/min:
+With the rules as they are, the best possible simulation is 3 slots at Level 3 for each station. Its ceiling per resource is $3 \times (1/3\text{ min}) / \text{BOM}(r)$ robots/min:
 
 | Resource | Ceiling (robots/hour) |
 |---|---|
@@ -127,7 +127,7 @@ With the rules as they are, the best possible factory is 3 slots at Level 3 for 
 
 ### Production Stages
 - **Minute 0 to 929 (Bootstrap, compressed)**: Immediate reinvestment of every sale into Metals L2, 2nd Metals/Copper/Energy slots, Actuator L2, 2nd Actuator station, and so on.
-- **After minute 929 (Steady state)**: The factory is maxed out and output is flat at the energy ceiling. All remaining growth is just time.
+- **After minute 929 (Steady state)**: The simulation is maxed out and output is flat at the energy ceiling. All remaining growth is just time.
 
 A human player will not play the greedy-optimal line, so a real run reaches the ceiling later (see section 7).
 
@@ -135,7 +135,7 @@ A human player will not play the greedy-optimal line, so a real run reaches the 
 
 ## 5. Order Generation Framework
 
-Orders are generated to match the factory's capacity curve across the time horizon.
+Orders are generated to match the simulation's capacity curve across the time horizon.
 
 ### 5.1 Order Schema
 `Order` in `calculator.py`, exported by `--export-json` as:

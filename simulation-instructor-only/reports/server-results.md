@@ -16,11 +16,11 @@
 2. **Event Production & Buffering**:
    - In-memory event queue with double limit enforcement (10,000 records / 16 MiB).
    - Control allowance reserve (16 records / 64 KiB) for pause/stop/restart operations under buffer pressure.
-   - Fair publisher loop across all active factories.
-   - Onboarding verification probe on 4 activity topics (`connection.test`) and state topic (`factory.state`).
+   - Fair publisher loop across all active simulations.
+   - Onboarding verification probe on 4 activity topics (`connection.test`) and state topic (`simulation.state`).
 3. **API & Security**:
    - Bearer workshop token authentication against SHA-256 enrollment hashes.
    - `X-Server-Epoch` protection across mutations to reject stale requests after process reboot.
-   - Strict attendee factory isolation (404 on unowned factory access).
+   - Strict attendee simulation isolation (404 on unowned simulation access).
    - Capacity enforcement (`MAX_FACTORIES = 25`, return 429).
    - 6-hour TTL expiry handling (return 410 on expired instances).

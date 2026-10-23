@@ -12,7 +12,7 @@ Consumers of this module use:
                       e.g. ".gathering-started" → "gathering-started"
 
     ACTIVITY_TOPIC_SUFFIXES – list of suffixes for every topic *except*
-                      ".factory-state" (used for probe writes).
+                      ".simulation-state" (used for probe writes).
 """
 
 import json
@@ -34,5 +34,5 @@ def _load() -> Dict[str, str]:
 TOPICS: Dict[str, str] = _load()
 
 ACTIVITY_TOPIC_SUFFIXES: List[str] = [
-    suffix for suffix in TOPICS if suffix != ".factory-state"
+    suffix for suffix in TOPICS if suffix != ".simulation-state"
 ]

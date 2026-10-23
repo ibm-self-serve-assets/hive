@@ -2,7 +2,7 @@
 export interface HiveEvent {
   event_id: string;
   event_type: string;
-  factory_id?: string | null;
+  simulation_id?: string | null;
   server_epoch?: string | null;
   run_id?: string | null;
   run_generation: number;
@@ -20,7 +20,7 @@ export type EventSection = 'gathering' | 'manufacturing' | 'assembly';
 /** Shape of the state object sent from the backend SSE stream. */
 export interface DashboardState {
   stream_health: 'live' | 'stale' | 'awaiting_events';
-  active_factory_id: string | null;
+  active_simulation_id: string | null;
   /** run_id of the most recent event (matches the run_id column in hive_job_durations). */
   run_id: string | null;
   run_generation: number;
@@ -76,7 +76,7 @@ export interface DashboardState {
 
 export const EMPTY_STATE: DashboardState = {
   stream_health: 'awaiting_events',
-  active_factory_id: null,
+  active_simulation_id: null,
   run_id: null,
   run_generation: 0,
   sim_time_minutes: 0,

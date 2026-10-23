@@ -2,13 +2,13 @@
 
 ### Manufacturing simulation (hosted) and local controls
 
-- The factory runs in the **Simulation Server** (Python/FastAPI, one containerized process on IBM Code Engine), with one in-memory logical factory per enrolled attendee. It is the authority for the clock, inventory and jobs.
-- The attendee's laptop runs a **local Python backend and React dashboard** (the "Hive Controls" package). The backend consumes the factory's Confluent events, keeps an in-memory view, and sends lifecycle commands to the server. The browser never talks to Kafka or the server directly and never holds the workshop token.
+- The simulation runs in the **Simulation Server** (Python/FastAPI, one containerized process on IBM Code Engine), with one in-memory logical simulation per enrolled attendee. It is the authority for the clock, inventory and jobs.
+- The attendee's laptop runs a **local Python backend and React dashboard** (the "Hive Controls" package). The backend consumes the simulation's Confluent events, keeps an in-memory view, and sends lifecycle commands to the server. The browser never talks to Kafka or the server directly and never holds the workshop token.
 - Observation path: Simulation Server → Kafka producer → Confluent → local consumer → local API/SSE → UI. Command path: UI → local backend → Simulation Server `/v1` API. A command receipt is not an observation; the UI shows them as separate facts.
-- The factory receives resources, converts them into parts, and assembles robotic bees.
+- The simulation receives resources, converts them into parts, and assembles robotic bees.
 - Manufacturing is **automatic**. Resources arrive on a set schedule and parts are manufactured as inputs become available.
 - Lifecycle controls: Start, Pause, Stop (final for that run), Restart at zero (new generation), and 1x/5x speed.
-- State is memory-only. A server restart loses every factory; attendees must re-register and start from zero. A local app restart only loses the displayed view. Closing the laptop does not pause the hosted factory.
+- State is memory-only. A server restart loses every simulation; attendees must re-register and start from zero. A local app restart only loses the displayed view. Closing the laptop does not pause the hosted simulation.
 - The workshop's initial build is delivered by two repo packages that share one contract: `simulation-instructor-only/` (Simulation Server) and `spec-1-hive-dashboard/` (local backend and dashboard), with the shared API and event contracts in `spec-shared/`.
 - No production-order form, quantity selector, or Queue Production button in the latest design.
 - Manufacturing automation is distinct from the Queen. The Queen does not control manufacturing.

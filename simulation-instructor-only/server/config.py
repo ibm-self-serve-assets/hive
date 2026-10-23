@@ -30,9 +30,9 @@ class EnrollmentConfig(BaseModel):
 
 class ServerConfig(BaseModel):
     port: int = 8080
-    factory_ttl_seconds: int = 20160
-    factory_buffer_limit_events: int = 10000
-    factory_buffer_limit_bytes: int = 16777216
+    simulation_ttl_seconds: int = 20160
+    simulation_buffer_limit_events: int = 10000
+    simulation_buffer_limit_bytes: int = 16777216
     sim_tick_milliseconds: int = 100
     snapshot_interval_milliseconds: int = 200
 
@@ -65,7 +65,7 @@ class ServerConfig(BaseModel):
             )
 
         port = int(env_dict.get("PORT", 8080))
-        factory_ttl = int(env_dict.get("FACTORY_TTL_SECONDS", 20160))
+        simulation_ttl = int(env_dict.get("FACTORY_TTL_SECONDS", 20160))
         buffer_events = int(env_dict.get("FACTORY_BUFFER_LIMIT_EVENTS", 10000))
         buffer_bytes = int(env_dict.get("FACTORY_BUFFER_LIMIT_BYTES", 16777216))
         tick_ms = int(env_dict.get("SIM_TICK_MILLISECONDS", 100))
@@ -73,7 +73,7 @@ class ServerConfig(BaseModel):
 
         if not (1 <= port <= 65535):
             raise ValueError(f"Invalid PORT: {port}")
-        if factory_ttl <= 0:
+        if simulation_ttl <= 0:
             raise ValueError("FACTORY_TTL_SECONDS must be positive")
         if buffer_events <= 0:
             raise ValueError("FACTORY_BUFFER_LIMIT_EVENTS must be positive")
@@ -86,9 +86,9 @@ class ServerConfig(BaseModel):
 
         return cls(
             port=port,
-            factory_ttl_seconds=factory_ttl,
-            factory_buffer_limit_events=buffer_events,
-            factory_buffer_limit_bytes=buffer_bytes,
+            simulation_ttl_seconds=simulation_ttl,
+            simulation_buffer_limit_events=buffer_events,
+            simulation_buffer_limit_bytes=buffer_bytes,
             sim_tick_milliseconds=tick_ms,
             snapshot_interval_milliseconds=snapshot_ms,
         )

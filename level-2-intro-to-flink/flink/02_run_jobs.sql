@@ -40,7 +40,7 @@
 -- so replaying the same events gives the same rows.
 --
 -- Event fields used (see spec-shared/schemas/event_payloads.json):
---   envelope : factory_id, run_id, occurred_at, sim_time_minutes
+--   envelope : simulation_id, run_id, occurred_at, sim_time_minutes
 --   payload  : job_id, resource_id / station_id / output_type
 -- =============================================================================
 
@@ -50,7 +50,7 @@ BEGIN
 -- ---- gathering: gathering-started -> gathering-completed --------------------
 INSERT INTO `hive_job_durations`
 SELECT
-  s.job_id, s.factory_id, s.run_id,
+  s.job_id, s.simulation_id, s.run_id,
   'gathering'                                         AS stage,
   'gathering-started'                                 AS started_topic,
   'gathering-completed'                               AS completed_topic,
@@ -62,7 +62,7 @@ SELECT
 FROM (
   SELECT
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.job_id')                              AS job_id,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                                  AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                         AS subject,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.resource_id')                         AS output_type,
@@ -85,7 +85,7 @@ JOIN (
 -- ---- manufacturing: manufacturing-started -> manufacturing-completed --------
 INSERT INTO `hive_job_durations`
 SELECT
-  s.job_id, s.factory_id, s.run_id,
+  s.job_id, s.simulation_id, s.run_id,
   'manufacturing'                                     AS stage,
   'manufacturing-started'                             AS started_topic,
   'manufacturing-completed'                           AS completed_topic,
@@ -97,7 +97,7 @@ SELECT
 FROM (
   SELECT
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.job_id')                              AS job_id,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                                  AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.station_id')                          AS subject,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                           AS output_type,
@@ -120,7 +120,7 @@ JOIN (
 -- ---- assembly: assembly-started -> assembly-completed -----------------------
 INSERT INTO `hive_job_durations`
 SELECT
-  s.job_id, s.factory_id, s.run_id,
+  s.job_id, s.simulation_id, s.run_id,
   'assembly'                                          AS stage,
   'assembly-started'                                  AS started_topic,
   'assembly-completed'                                AS completed_topic,
@@ -132,7 +132,7 @@ SELECT
 FROM (
   SELECT
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.job_id')                              AS job_id,
-    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.factory_id')                                  AS factory_id,
+    JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.simulation_id')                                  AS simulation_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.run_id')                                      AS run_id,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.station_id')                          AS subject,
     JSON_VALUE(MAKE_VALID_UTF8(`val`), '$.payload.output_type')                           AS output_type,

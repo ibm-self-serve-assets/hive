@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-`schemas/simulation_rules.json` is the single machine-readable recipe/delivery configuration for the simulation and tests. It defines resource IDs, per-resource delivery intervals and quantities, part IDs, station IDs, recipe quantities, job durations and the robot types. Its values are not repeated in this document; read the JSON. Event and `factory.state` payload shapes are in `spec-shared/schemas/event_payloads.json`. The frontend uses matching display labels. Kafka bootstrap settings and ports remain in server root `.env`.
+`schemas/simulation_rules.json` is the single machine-readable recipe/delivery configuration for the simulation and tests. It defines resource IDs, per-resource delivery intervals and quantities, part IDs, station IDs, recipe quantities, job durations and the robot types. Its values are not repeated in this document; read the JSON. Event and `simulation.state` payload shapes are in `spec-shared/schemas/event_payloads.json`. The frontend uses matching display labels. Kafka bootstrap settings and ports remain in server root `.env`.
 
 The values are the agreed starting point for the first working version and will be tuned. They represent a teaching simulation, not a physical robot bill of materials.
 
@@ -32,7 +32,7 @@ Durations are internal: no event or snapshot carries `duration_ms`.
 
 Use a 100 ms clock wake-up interval and 1x/5x speeds. Deliveries and jobs use simulated time. Dashboard snapshots use wall time: up to five per second while running, plus control/lifecycle snapshots and a one-second paused heartbeat.
 
-A run is capped at one simulated week (`MAX_SIM_MS` in `server/factory_manager.py`). When the clock reaches the cap the factory expires, like a TTL expiry.
+A run is capped at one simulated week (`MAX_SIM_MS` in `server/simulation_manager.py`). When the clock reaches the cap the simulation expires, like a TTL expiry.
 
 ## Conservation checks
 

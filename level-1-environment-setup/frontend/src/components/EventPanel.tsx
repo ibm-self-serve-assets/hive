@@ -68,7 +68,7 @@ const ENVELOPE_FIELDS: [keyof HiveEvent, string][] = [
   ['state_revision', 'State revision'],
   ['run_generation', 'Run generation'],
   ['run_id', 'Run ID'],
-  ['factory_id', 'Factory ID'],
+  ['simulation_id', 'Simulation ID'],
   ['server_epoch', 'Server epoch'],
   ['schema_version', 'Schema version'],
 ];

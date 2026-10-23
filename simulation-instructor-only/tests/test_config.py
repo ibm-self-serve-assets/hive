@@ -10,7 +10,7 @@ def test_server_config_loading():
     try:
         cfg = ServerConfig.load_from_env()
         assert cfg.port == 9000
-        assert cfg.factory_ttl_seconds == 1800
+        assert cfg.simulation_ttl_seconds == 1800
     finally:
         del os.environ["PORT"]
         del os.environ["FACTORY_TTL_SECONDS"]

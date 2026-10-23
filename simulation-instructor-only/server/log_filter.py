@@ -7,7 +7,7 @@ _SILENT_PATHS = frozenset([
     "/health/live",
     "/health/ready",
     "/v1/server",
-    "/v1/factories",
+    "/v1/simulations",
 ])
 
 

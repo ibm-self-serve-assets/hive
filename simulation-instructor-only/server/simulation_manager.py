@@ -11,17 +11,17 @@ from typing import Dict, List, Optional, Tuple, Any
 from server.config import ServerConfig, EnrollmentConfig, EnrollmentRecord
 from server.models import (
     EventEnvelope,
-    FactoryStatePayload,
-    FactoryInitializedPayload,
+    SimulationStatePayload,
+    SimulationInitializedPayload,
     OperationalError,
 )
 from server.rules import get_simulation_rules
 from topics import TOPICS
 from server.simulation import SimulationRun
-from server.buffer import FactoryEventBuffer, QueuedEvent
-from server.producer import FactoryKafkaProducer
+from server.buffer import SimulationEventBuffer, QueuedEvent
+from server.producer import SimulationKafkaProducer
 
-logger = logging.getLogger("hive.factory")
+logger = logging.getLogger("hive.simulation")
 
 def get_max_sim_ms() -> int:
     try:
@@ -32,39 +32,39 @@ def get_max_sim_ms() -> int:
 MAX_SIM_MS = get_max_sim_ms()
 
 
-class FactoryInstance:
+class SimulationInstance:
     def __init__(
         self,
-        factory_id: str,
+        simulation_id: str,
         owner_attendee_id: str,
         server_epoch: str,
         enrollment_record: EnrollmentRecord,
         config: ServerConfig,
     ):
-        self.factory_id = factory_id
+        self.simulation_id = simulation_id
         self.owner_attendee_id = owner_attendee_id
         self.server_epoch = server_epoch
         self.enrollment_record = enrollment_record
         self.config = config
 
         self.created_at = datetime.now(timezone.utc)
-        self.expires_at = self.created_at + timedelta(seconds=config.factory_ttl_seconds)
+        self.expires_at = self.created_at + timedelta(seconds=config.simulation_ttl_seconds)
 
         self.lock = asyncio.Lock()
         self.event_sequence: int = 0
         self.run_generation: int = 1
 
         self.current_run = SimulationRun(
-            factory_id=self.factory_id,
+            simulation_id=self.simulation_id,
             server_epoch=self.server_epoch,
             run_id=str(uuid.uuid4()),
             run_generation=self.run_generation,
             lifecycle_status="provisioning",
         )
 
-        self.buffer = FactoryEventBuffer(
-            max_events=config.factory_buffer_limit_events,
-            max_bytes=config.factory_buffer_limit_bytes,
+        self.buffer = SimulationEventBuffer(
+            max_events=config.simulation_buffer_limit_events,
+            max_bytes=config.simulation_buffer_limit_bytes,
         )
 
         # Read-only ring buffer for the /events API — never drained by the producer.
@@ -72,14 +72,14 @@ class FactoryInstance:
         # that have already been acknowledged out of the main buffer.
         self.event_log: collections.deque = collections.deque(maxlen=200)
 
-        self.producer: Optional[FactoryKafkaProducer] = None
+        self.producer: Optional[SimulationKafkaProducer] = None
         self.producer_key: Optional[str] = None
         self.producer_secret: Optional[str] = None
 
         self.last_tick_wall_time: float = time.monotonic()
         self.last_snapshot_wall_time: float = 0.0
 
-        # Per-factory publish back-off state (exponential, capped at 5 s)
+        # Per-simulation publish back-off state (exponential, capped at 5 s)
         self.publish_failure_count: int = 0
         self.publish_next_retry_after: float = 0.0  # monotonic time
 
@@ -111,10 +111,10 @@ class FactoryInstance:
 
 
 class OperationRecord:
-    def __init__(self, operation_id: str, owner_attendee_id: str, factory_id: str, op_type: str):
+    def __init__(self, operation_id: str, owner_attendee_id: str, simulation_id: str, op_type: str):
         self.operation_id = operation_id
         self.owner_attendee_id = owner_attendee_id
-        self.factory_id = factory_id
+        self.simulation_id = simulation_id
         self.op_type = op_type
         self.status = "pending"  # pending, succeeded, failed
         self.error_code: Optional[str] = None
@@ -122,7 +122,7 @@ class OperationRecord:
         self.created_at = datetime.now(timezone.utc)
 
 
-class FactoryManager:
+class SimulationManager:
     def __init__(self, config: ServerConfig, enrollment_config: EnrollmentConfig):
         self.config = config
         self.enrollment_config = enrollment_config
@@ -130,15 +130,15 @@ class FactoryManager:
 
         self.registration_lock = asyncio.Lock()
 
-        # Debug mode: when True, factory.state payloads include a debug_mode_instructor_only
+        # Debug mode: when True, simulation.state payloads include a debug_mode_instructor_only
         # snapshot of the server-side inventory truth so the attendee dashboard
         # can display it without needing a Flink hive_inventory_balances topic.
         self.debug_mode: bool = False
 
-        # attendee_id -> factory_id
-        self.owner_factories: Dict[str, str] = {}
-        # factory_id -> FactoryInstance
-        self.factories: Dict[str, FactoryInstance] = {}
+        # attendee_id -> simulation_id
+        self.owner_simulations: Dict[str, str] = {}
+        # simulation_id -> SimulationInstance
+        self.simulations: Dict[str, SimulationInstance] = {}
         # operation_id -> OperationRecord
         self.operations: Dict[str, OperationRecord] = {}
 
@@ -153,7 +153,7 @@ class FactoryManager:
         self._running = True
         self._tick_task = asyncio.create_task(self._simulation_loop())
         self._flush_task = asyncio.create_task(self._publisher_loop())
-        logger.info(f"FactoryManager started with server_epoch={self.server_epoch}")
+        logger.info(f"SimulationManager started with server_epoch={self.server_epoch}")
 
     async def stop(self):
         self._running = False
@@ -161,10 +161,10 @@ class FactoryManager:
             self._tick_task.cancel()
         if self._flush_task:
             self._flush_task.cancel()
-        for f in self.factories.values():
+        for f in self.simulations.values():
             if f.producer:
                 f.producer.close()
-        logger.info("FactoryManager stopped")
+        logger.info("SimulationManager stopped")
 
     def get_server_epoch(self) -> str:
         return self.server_epoch
@@ -173,7 +173,7 @@ class FactoryManager:
         if not epoch_header or epoch_header != self.server_epoch:
             raise ValueError("server_restarted")
 
-    async def register_factory(
+    async def register_simulation(
         self,
         attendee_id: str,
         bootstrap_server: str,
@@ -196,15 +196,15 @@ class FactoryManager:
                         "message": "Idempotency key reused with different request payload",
                     }
 
-            # Check if attendee already has an active factory
-            existing_fid = self.owner_factories.get(attendee_id)
+            # Check if attendee already has an active simulation
+            existing_fid = self.owner_simulations.get(attendee_id)
             if existing_fid:
-                existing_f = self.factories.get(existing_fid)
+                existing_f = self.simulations.get(existing_fid)
                 if existing_f and not existing_f.is_expired and not existing_f.check_expiry():
                     return 409, {
-                        "error_code": "factory_already_exists",
-                        "message": "Attendee already owns an active factory instance",
-                        "factory_id": existing_fid,
+                        "error_code": "simulation_already_exists",
+                        "message": "Attendee already owns an active simulation instance",
+                        "simulation_id": existing_fid,
                     }
 
             # Find enrollment record
@@ -218,20 +218,20 @@ class FactoryManager:
                     "message": "bootstrap_server is required",
                 }
 
-            factory_id = str(uuid.uuid4())
+            simulation_id = str(uuid.uuid4())
             operation_id = str(uuid.uuid4())
 
-            factory = FactoryInstance(
-                factory_id=factory_id,
+            simulation = SimulationInstance(
+                simulation_id=simulation_id,
                 owner_attendee_id=attendee_id,
                 server_epoch=self.server_epoch,
                 enrollment_record=enrollment_rec,
                 config=self.config,
             )
-            factory.producer_key = producer_key
-            factory.producer_secret = producer_secret
+            simulation.producer_key = producer_key
+            simulation.producer_secret = producer_secret
 
-            factory.producer = FactoryKafkaProducer(
+            simulation.producer = SimulationKafkaProducer(
                 bootstrap_servers=bootstrap_server,
                 security_protocol="SASL_SSL",
                 sasl_mechanism="PLAIN",
@@ -242,16 +242,16 @@ class FactoryManager:
             op = OperationRecord(
                 operation_id=operation_id,
                 owner_attendee_id=attendee_id,
-                factory_id=factory_id,
-                op_type="provision_factory",
+                simulation_id=simulation_id,
+                op_type="provision_simulation",
             )
 
-            self.factories[factory_id] = factory
-            self.owner_factories[attendee_id] = factory_id
+            self.simulations[simulation_id] = simulation
+            self.owner_simulations[attendee_id] = simulation_id
             self.operations[operation_id] = op
 
             resp = {
-                "factory_id": factory_id,
+                "simulation_id": simulation_id,
                 "operation_id": operation_id,
                 "status_url": f"/v1/operations/{operation_id}",
                 "server_epoch": self.server_epoch,
@@ -260,109 +260,109 @@ class FactoryManager:
 
         # Trigger background verification asynchronously outside lock
         asyncio.create_task(
-            self._verify_provisioning_task(factory_id, operation_id)
+            self._verify_provisioning_task(simulation_id, operation_id)
         )
 
         return 202, resp
 
-    async def _verify_provisioning_task(self, factory_id: str, operation_id: str):
-        factory = self.factories.get(factory_id)
+    async def _verify_provisioning_task(self, simulation_id: str, operation_id: str):
+        simulation = self.simulations.get(simulation_id)
         op = self.operations.get(operation_id)
-        if not factory or not op:
+        if not simulation or not op:
             return
 
         # Prepare empty paused snapshot event for probe
-        async with factory.lock:
-            factory.current_run.lifecycle_status = "paused"
-            _, snapshot_event = factory.current_run.create_snapshot_event(
-                event_seq_generator=factory.next_event_sequence,
+        async with simulation.lock:
+            simulation.current_run.lifecycle_status = "paused"
+            _, snapshot_event = simulation.current_run.create_snapshot_event(
+                event_seq_generator=simulation.next_event_sequence,
             )
             # Temporarily revert lifecycle to provisioning until verification passes
-            factory.current_run.lifecycle_status = "provisioning"
+            simulation.current_run.lifecycle_status = "provisioning"
 
-        producer = factory.producer
+        producer = simulation.producer
         if not producer:
             op.status = "failed"
             op.error_code = "no_producer"
             op.error_message = "Producer initialization failed"
-            async with factory.lock:
-                factory.current_run.lifecycle_status = "provisioning_failed"
+            async with simulation.lock:
+                simulation.current_run.lifecycle_status = "provisioning_failed"
             return
 
         ok, err_msg = await producer.verify_permissions_and_topics(
-            factory_id=factory.factory_id,
-            server_epoch=factory.server_epoch,
-            run_id=factory.current_run.run_id,
-            run_generation=factory.current_run.run_generation,
+            simulation_id=simulation.simulation_id,
+            server_epoch=simulation.server_epoch,
+            run_id=simulation.current_run.run_id,
+            run_generation=simulation.current_run.run_generation,
             operation_id=operation_id,
             empty_snapshot_event=snapshot_event,
-            next_event_seq_fn=factory.next_event_sequence,
+            next_event_seq_fn=simulation.next_event_sequence,
         )
 
-        async with factory.lock:
+        async with simulation.lock:
             if ok:
                 op.status = "succeeded"
-                factory.current_run.lifecycle_status = "paused"
+                simulation.current_run.lifecycle_status = "paused"
 
-                # Publish factory.initialized — marks the moment this factory
-                # became ready. Published to .factory-state (compact topic) so
+                # Publish simulation.initialized — marks the moment this simulation
+                # became ready. Published to .simulation-state (compact topic) so
                 # consumers replaying from earliest always see it.
                 rules = get_simulation_rules()
                 station_recipes = {m.station_id: dict(m.inputs) for m in rules.manufacturing}
                 station_recipes.update({a.station_id: dict(a.inputs) for a in rules.assembly})
-                init_payload = FactoryInitializedPayload(
+                init_payload = SimulationInitializedPayload(
                     operation_id=operation_id,
-                    attendee_id=factory.owner_attendee_id,
-                    expires_at=factory.expires_at.isoformat(),
+                    attendee_id=simulation.owner_attendee_id,
+                    expires_at=simulation.expires_at.isoformat(),
                     station_recipes=station_recipes,
                 )
                 init_event = EventEnvelope(
                     event_id=str(uuid.uuid4()),
-                    event_type="factory.initialized",
+                    event_type="simulation.initialized",
                     schema_version=1,
-                    factory_id=factory.factory_id,
-                    server_epoch=factory.server_epoch,
-                    run_id=factory.current_run.run_id,
-                    run_generation=factory.current_run.run_generation,
-                    event_sequence=factory.next_event_sequence(),
-                    state_revision=factory.current_run.state_revision,
+                    simulation_id=simulation.simulation_id,
+                    server_epoch=simulation.server_epoch,
+                    run_id=simulation.current_run.run_id,
+                    run_generation=simulation.current_run.run_generation,
+                    event_sequence=simulation.next_event_sequence(),
+                    state_revision=simulation.current_run.state_revision,
                     occurred_at=datetime.now(timezone.utc).isoformat(),
                     sim_time_minutes=0,
                     causation_id=operation_id,
                     payload=init_payload.model_dump(),
                 )
-                factory.buffer.enqueue(".factory-state", init_event, is_control=True)
+                simulation.buffer.enqueue(".simulation-state", init_event, is_control=True)
 
                 # Queue initial empty paused snapshot into buffer
-                factory.buffer.enqueue(".factory-state", snapshot_event, is_control=True)
+                simulation.buffer.enqueue(".simulation-state", snapshot_event, is_control=True)
             else:
                 op.status = "failed"
                 op.error_code = "provisioning_probe_failed"
                 op.error_message = err_msg or "Verification probe failed"
-                factory.current_run.lifecycle_status = "provisioning_failed"
+                simulation.current_run.lifecycle_status = "provisioning_failed"
 
     async def rotate_connection(
         self,
-        factory_id: str,
+        simulation_id: str,
         attendee_id: str,
         bootstrap_server: str,
         producer_key: str,
         producer_secret: str,
         idempotency_key: str,
     ) -> Tuple[int, Dict[str, Any]]:
-        factory = self.factories.get(factory_id)
-        if not factory or factory.owner_attendee_id != attendee_id:
-            return 404, {"error_code": "not_found", "message": "Factory not found"}
+        simulation = self.simulations.get(simulation_id)
+        if not simulation or simulation.owner_attendee_id != attendee_id:
+            return 404, {"error_code": "not_found", "message": "Simulation not found"}
 
-        if factory.check_expiry():
+        if simulation.check_expiry():
             return 410, {"error_code": "expired", "message": "Simulation expired"}
 
         req_body_str = f"{bootstrap_server}:{producer_key}"
         req_hash = hashlib.sha256(req_body_str.encode("utf-8")).hexdigest()
 
-        async with factory.lock:
-            if idempotency_key in factory.idempotency_cache:
-                stored_hash, stored_resp = factory.idempotency_cache[idempotency_key]
+        async with simulation.lock:
+            if idempotency_key in simulation.idempotency_cache:
+                stored_hash, stored_resp = simulation.idempotency_cache[idempotency_key]
                 if stored_hash == req_hash:
                     return 202, stored_resp
                 else:
@@ -375,7 +375,7 @@ class FactoryManager:
             op = OperationRecord(
                 operation_id=operation_id,
                 owner_attendee_id=attendee_id,
-                factory_id=factory_id,
+                simulation_id=simulation_id,
                 op_type="rotate_connection",
             )
             self.operations[operation_id] = op
@@ -385,12 +385,12 @@ class FactoryManager:
                 "status_url": f"/v1/operations/{operation_id}",
                 "server_epoch": self.server_epoch,
             }
-            factory.idempotency_cache[idempotency_key] = (req_hash, resp)
+            simulation.idempotency_cache[idempotency_key] = (req_hash, resp)
 
         # Asynchronously verify replacement credentials
         asyncio.create_task(
             self._verify_rotation_task(
-                factory_id, operation_id, bootstrap_server, producer_key, producer_secret
+                simulation_id, operation_id, bootstrap_server, producer_key, producer_secret
             )
         )
 
@@ -398,18 +398,18 @@ class FactoryManager:
 
     async def _verify_rotation_task(
         self,
-        factory_id: str,
+        simulation_id: str,
         operation_id: str,
         bootstrap_server: str,
         producer_key: str,
         producer_secret: str,
     ):
-        factory = self.factories.get(factory_id)
+        simulation = self.simulations.get(simulation_id)
         op = self.operations.get(operation_id)
-        if not factory or not op:
+        if not simulation or not op:
             return
 
-        test_producer = FactoryKafkaProducer(
+        test_producer = SimulationKafkaProducer(
             bootstrap_servers=bootstrap_server,
             security_protocol="SASL_SSL",
             sasl_mechanism="PLAIN",
@@ -417,28 +417,28 @@ class FactoryManager:
             api_secret=producer_secret
         )
 
-        async with factory.lock:
-            _, snapshot_event = factory.current_run.create_snapshot_event(
-                event_seq_generator=factory.next_event_sequence,
+        async with simulation.lock:
+            _, snapshot_event = simulation.current_run.create_snapshot_event(
+                event_seq_generator=simulation.next_event_sequence,
             )
 
         ok, err_msg = await test_producer.verify_permissions_and_topics(
-            factory_id=factory.factory_id,
-            server_epoch=factory.server_epoch,
-            run_id=factory.current_run.run_id,
-            run_generation=factory.current_run.run_generation,
+            simulation_id=simulation.simulation_id,
+            server_epoch=simulation.server_epoch,
+            run_id=simulation.current_run.run_id,
+            run_generation=simulation.current_run.run_generation,
             operation_id=operation_id,
             empty_snapshot_event=snapshot_event,
-            next_event_seq_fn=factory.next_event_sequence,
+            next_event_seq_fn=simulation.next_event_sequence,
         )
 
-        async with factory.lock:
+        async with simulation.lock:
             if ok:
                 op.status = "succeeded"
-                old_producer = factory.producer
-                factory.producer = test_producer
-                factory.producer_key = producer_key
-                factory.producer_secret = producer_secret
+                old_producer = simulation.producer
+                simulation.producer = test_producer
+                simulation.producer_key = producer_key
+                simulation.producer_secret = producer_secret
                 if old_producer:
                     old_producer.close()
             else:
@@ -449,26 +449,26 @@ class FactoryManager:
 
     async def execute_command(
         self,
-        factory_id: str,
+        simulation_id: str,
         attendee_id: str,
         command: str,  # start, pause, stop, restart
         body: Dict[str, Any],
         idempotency_key: str,
     ) -> Tuple[int, Dict[str, Any]]:
-        factory = self.factories.get(factory_id)
-        if not factory or factory.owner_attendee_id != attendee_id:
-            return 404, {"error_code": "not_found", "message": "Factory not found"}
+        simulation = self.simulations.get(simulation_id)
+        if not simulation or simulation.owner_attendee_id != attendee_id:
+            return 404, {"error_code": "not_found", "message": "Simulation not found"}
 
-        if factory.check_expiry():
+        if simulation.check_expiry():
             return 410, {"error_code": "expired", "message": "Simulation expired"}
 
         req_body_str = f"{command}:{sorted(body.items())}"
         req_hash = hashlib.sha256(req_body_str.encode("utf-8")).hexdigest()
 
-        async with factory.lock:
+        async with simulation.lock:
             # Check idempotency cache
-            if idempotency_key in factory.idempotency_cache:
-                stored_hash, stored_resp = factory.idempotency_cache[idempotency_key]
+            if idempotency_key in simulation.idempotency_cache:
+                stored_hash, stored_resp = simulation.idempotency_cache[idempotency_key]
                 if stored_hash == req_hash:
                     return 200, stored_resp
                 else:
@@ -479,18 +479,18 @@ class FactoryManager:
 
             # Check expected_generation if provided
             expected_gen = body.get("expected_generation")
-            if expected_gen is not None and expected_gen != factory.current_run.run_generation:
+            if expected_gen is not None and expected_gen != simulation.current_run.run_generation:
                 return 409, {
                     "error_code": "generation_conflict",
-                    "message": f"Expected generation {expected_gen} does not match current {factory.current_run.run_generation}",
+                    "message": f"Expected generation {expected_gen} does not match current {simulation.current_run.run_generation}",
                 }
 
-            curr_status = factory.current_run.lifecycle_status
+            curr_status = simulation.current_run.lifecycle_status
 
             if curr_status in ("provisioning", "provisioning_failed"):
                 return 409, {
                     "error_code": "invalid_lifecycle_state",
-                    "message": f"Cannot execute command while factory is {curr_status}",
+                    "message": f"Cannot execute command while simulation is {curr_status}",
                 }
 
             command_id = str(uuid.uuid4())
@@ -508,21 +508,21 @@ class FactoryManager:
                     pass
                 elif curr_status == "paused":
                     # Check if operational error was buffer_full
-                    if factory.current_run.operational_error and factory.current_run.operational_error.code == "buffer_full":
+                    if simulation.current_run.operational_error and simulation.current_run.operational_error.code == "buffer_full":
                         # Check capacity
-                        if not factory.buffer.can_fit([], is_control=False):
+                        if not simulation.buffer.can_fit([], is_control=False):
                             return 409, {
                                 "error_code": "buffer_full",
                                 "message": "Buffer is still full; cannot resume",
                             }
-                        factory.current_run.operational_error = None
+                        simulation.current_run.operational_error = None
 
-                    factory.current_run.lifecycle_status = "running"
-                    factory.last_tick_wall_time = time.monotonic()
+                    simulation.current_run.lifecycle_status = "running"
+                    simulation.last_tick_wall_time = time.monotonic()
                     # Trigger initial scheduling if at time 0
-                    if factory.current_run.sim_time_ms == 0:
-                        sched_events = factory.current_run.initial_scheduling(
-                            event_seq_generator=factory.next_event_sequence,
+                    if simulation.current_run.sim_time_ms == 0:
+                        sched_events = simulation.current_run.initial_scheduling(
+                            event_seq_generator=simulation.next_event_sequence,
                             occurred_at=applied_at,
                         )
                         new_events.extend(sched_events)
@@ -534,14 +534,14 @@ class FactoryManager:
                         "message": "Stopped run cannot be paused",
                     }
                 if curr_status == "running":
-                    factory.current_run.lifecycle_status = "paused"
+                    simulation.current_run.lifecycle_status = "paused"
                 elif curr_status == "paused":
                     # No-op
                     pass
 
             elif command == "stop":
                 if curr_status in ("running", "paused"):
-                    factory.current_run.lifecycle_status = "stopped"
+                    simulation.current_run.lifecycle_status = "stopped"
                 elif curr_status == "stopped":
                     # No-op
                     pass
@@ -549,26 +549,26 @@ class FactoryManager:
             elif command == "restart":
                 # Restart at zero creates a new generation
                 start_immediately = body.get("start", True)
-                new_gen = factory.run_generation + 1
-                factory.run_generation = new_gen
-                factory.event_log.clear()
+                new_gen = simulation.run_generation + 1
+                simulation.run_generation = new_gen
+                simulation.event_log.clear()
 
                 # Check buffer capacity for empty snapshot
-                factory.current_run = SimulationRun(
-                    factory_id=factory.factory_id,
-                    server_epoch=factory.server_epoch,
+                simulation.current_run = SimulationRun(
+                    simulation_id=simulation.simulation_id,
+                    server_epoch=simulation.server_epoch,
                     run_id=str(uuid.uuid4()),
                     run_generation=new_gen,
                     lifecycle_status="running" if start_immediately else "paused",
                 )
-                factory.last_tick_wall_time = time.monotonic()
+                simulation.last_tick_wall_time = time.monotonic()
 
                 # Generate initial empty time-zero snapshot
-                snap = factory.current_run.create_snapshot_event(
-                    event_seq_generator=factory.next_event_sequence,
+                snap = simulation.current_run.create_snapshot_event(
+                    event_seq_generator=simulation.next_event_sequence,
                     occurred_at=applied_at,
                 )
-                if not factory.buffer.can_fit([snap], is_control=True):
+                if not simulation.buffer.can_fit([snap], is_control=True):
                     return 409, {
                         "error_code": "buffer_full",
                         "message": "Buffer full; cannot fit initial restart snapshot",
@@ -576,69 +576,69 @@ class FactoryManager:
                 new_events.append(snap)
 
                 if start_immediately:
-                    sched_events = factory.current_run.initial_scheduling(
-                        event_seq_generator=factory.next_event_sequence,
+                    sched_events = simulation.current_run.initial_scheduling(
+                        event_seq_generator=simulation.next_event_sequence,
                         occurred_at=applied_at,
                     )
                     new_events.extend(sched_events)
 
-            factory.current_run.last_applied_command_id = command_id
+            simulation.current_run.last_applied_command_id = command_id
 
             # Create immediate lifecycle snapshot
-            snap = factory.current_run.create_snapshot_event(
-                event_seq_generator=factory.next_event_sequence,
+            snap = simulation.current_run.create_snapshot_event(
+                event_seq_generator=simulation.next_event_sequence,
                 occurred_at=applied_at,
                 causation_id=command_id,
             )
             new_events.append(snap)
 
             # Check buffer fit for all generated events
-            if not factory.buffer.can_fit(new_events, is_control=True):
+            if not simulation.buffer.can_fit(new_events, is_control=True):
                 return 409, {
                     "error_code": "buffer_full",
                     "message": "Event buffer capacity exceeded",
                 }
 
-            factory.buffer.enqueue_many(new_events, is_control=True)
+            simulation.buffer.enqueue_many(new_events, is_control=True)
 
             resp = {
                 "command_id": command_id,
                 "accepted": True,
-                "lifecycle_status": factory.current_run.lifecycle_status,
-                "run_id": factory.current_run.run_id,
-                "run_generation": factory.current_run.run_generation,
+                "lifecycle_status": simulation.current_run.lifecycle_status,
+                "run_id": simulation.current_run.run_id,
+                "run_generation": simulation.current_run.run_generation,
                 "applied_at": applied_at,
                 "server_epoch": self.server_epoch,
             }
-            factory.idempotency_cache[idempotency_key] = (req_hash, resp)
+            simulation.idempotency_cache[idempotency_key] = (req_hash, resp)
             return 200, resp
 
-    async def _finalize_expired(self, factory: "FactoryInstance"):
+    async def _finalize_expired(self, simulation: "SimulationInstance"):
         """
-        Best-effort final publish of an expired factory.state snapshot (so the UI
+        Best-effort final publish of an expired simulation.state snapshot (so the UI
         leaves 'running'), then release the producer and credentials.
         """
-        producer = factory.producer
+        producer = simulation.producer
         try:
             if producer:
-                async with factory.lock:
-                    topic_suffix, ev = factory.current_run.create_snapshot_event(
-                        event_seq_generator=factory.next_event_sequence,
+                async with simulation.lock:
+                    topic_suffix, ev = simulation.current_run.create_snapshot_event(
+                        event_seq_generator=simulation.next_event_sequence,
                     )
                 await asyncio.to_thread(
                     producer.publish_sync,
                     topic_suffix,
-                    ev.factory_id.encode("utf-8"),
+                    ev.simulation_id.encode("utf-8"),
                     json.dumps(ev.model_dump()).encode("utf-8"),
                 )
         except Exception as e:
-            logger.warning(f"Final expired snapshot failed for {factory.factory_id[:8]}: {e}")
+            logger.warning(f"Final expired snapshot failed for {simulation.simulation_id[:8]}: {e}")
         finally:
             if producer:
                 await asyncio.to_thread(producer.close)
-            factory.producer = None
-            factory.producer_key = None
-            factory.producer_secret = None
+            simulation.producer = None
+            simulation.producer_key = None
+            simulation.producer_secret = None
 
     async def _simulation_loop(self):
         """
@@ -654,71 +654,71 @@ class FactoryManager:
                 now_monotonic = time.monotonic()
                 now_utc_iso = datetime.now(timezone.utc).isoformat()
 
-                for factory in list(self.factories.values()):
-                    if factory.check_expiry():
-                        if factory.final_publish_pending:
-                            factory.final_publish_pending = False
-                            await self._finalize_expired(factory)
+                for simulation in list(self.simulations.values()):
+                    if simulation.check_expiry():
+                        if simulation.final_publish_pending:
+                            simulation.final_publish_pending = False
+                            await self._finalize_expired(simulation)
                         continue
 
-                    async with factory.lock:
+                    async with simulation.lock:
                         dbg = self.debug_mode
-                        if factory.current_run.lifecycle_status != "running":
+                        if simulation.current_run.lifecycle_status != "running":
                             # If paused or stopped, check 1-second heartbeat snapshot
-                            if now_monotonic - factory.last_snapshot_wall_time >= 1.0:
-                                snap = factory.current_run.create_snapshot_event(
-                                    event_seq_generator=factory.next_event_sequence,
+                            if now_monotonic - simulation.last_snapshot_wall_time >= 1.0:
+                                snap = simulation.current_run.create_snapshot_event(
+                                    event_seq_generator=simulation.next_event_sequence,
                                     occurred_at=now_utc_iso,
                                     include_debug_inventory=dbg,
                                 )
-                                if factory.buffer.can_fit([snap], is_control=False):
-                                    factory.buffer.enqueue(*snap)
-                                    factory.last_snapshot_wall_time = now_monotonic
+                                if simulation.buffer.can_fit([snap], is_control=False):
+                                    simulation.buffer.enqueue(*snap)
+                                    simulation.last_snapshot_wall_time = now_monotonic
                             continue
 
                         # Calculate elapsed wall time
-                        elapsed_wall = now_monotonic - factory.last_tick_wall_time
-                        factory.last_tick_wall_time = now_monotonic
+                        elapsed_wall = now_monotonic - simulation.last_tick_wall_time
+                        simulation.last_tick_wall_time = now_monotonic
 
                         # 1 real second = 1 sim minute = 60,000 sim ms
                         elapsed_sim_ms = int(elapsed_wall * 60_000.0)
                         if elapsed_sim_ms <= 0:
                             continue
 
-                        target_sim_time = min(factory.current_run.sim_time_ms + elapsed_sim_ms, get_max_sim_ms())
+                        target_sim_time = min(simulation.current_run.sim_time_ms + elapsed_sim_ms, get_max_sim_ms())
 
                         # Advance simulation
-                        events = factory.current_run.advance_to(
+                        events = simulation.current_run.advance_to(
                             target_sim_time_ms=target_sim_time,
-                            event_seq_generator=factory.next_event_sequence,
+                            event_seq_generator=simulation.next_event_sequence,
                             occurred_at=now_utc_iso,
                         )
 
                         # Check snapshot cadence
-                        need_snapshot = (now_monotonic - factory.last_snapshot_wall_time) >= snapshot_interval
+                        need_snapshot = (now_monotonic - simulation.last_snapshot_wall_time) >= snapshot_interval
                         if need_snapshot:
-                            snap = factory.current_run.create_snapshot_event(
-                                event_seq_generator=factory.next_event_sequence,
+                            snap = simulation.current_run.create_snapshot_event(
+                                event_seq_generator=simulation.next_event_sequence,
                                 occurred_at=now_utc_iso,
                                 include_debug_inventory=dbg,
                             )
                             events.append(snap)
 
                         # Check buffer capacity
-                        if not factory.buffer.can_fit(events, is_control=False):
+                        if not simulation.buffer.can_fit(events, is_control=False):
                             # Buffer full: flag operational error and halt time advance
-                            factory.current_run.operational_error = OperationalError(
+                            simulation.current_run.operational_error = OperationalError(
                                 code="buffer_full",
                                 message="In-memory event buffer is full; halting simulation advance",
                             )
                         else:
-                            factory.buffer.enqueue_many(events, is_control=False)
+                            simulation.buffer.enqueue_many(events, is_control=False)
                             if need_snapshot:
-                                factory.last_snapshot_wall_time = now_monotonic
+                                simulation.last_snapshot_wall_time = now_monotonic
                             # Mirror all activity (non-snapshot) events into the read-only event_log
                             for topic_suffix, ev in events:
-                                if ev.event_type != "factory.state":
-                                    factory.event_log.append(ev.model_dump())
+                                if ev.event_type != "simulation.state":
+                                    simulation.event_log.append(ev.model_dump())
 
             except asyncio.CancelledError:
                 break
@@ -728,26 +728,26 @@ class FactoryManager:
     async def _publisher_loop(self):
         """
         Background publisher sending oldest-first queued events to Confluent Kafka.
-        Fair sending across all factories. Uses per-factory exponential back-off on
+        Fair sending across all simulations. Uses per-simulation exponential back-off on
         consecutive publish failures (100 ms → 200 ms → ... → 5 s cap) to prevent
-        tight retry storms against a degraded broker without blocking other factories.
+        tight retry storms against a degraded broker without blocking other simulations.
         """
         while self._running:
             try:
                 await asyncio.sleep(0.02)  # 20 ms base flush loop
                 now = time.monotonic()
 
-                for factory in list(self.factories.values()):
-                    if factory.is_expired or not factory.producer:
+                for simulation in list(self.simulations.values()):
+                    if simulation.is_expired or not simulation.producer:
                         continue
 
-                    # Respect per-factory back-off window
-                    if now < factory.publish_next_retry_after:
+                    # Respect per-simulation back-off window
+                    if now < simulation.publish_next_retry_after:
                         continue
 
                     # Grab batch from buffer under lock
-                    async with factory.lock:
-                        batch = factory.buffer.get_batch(max_batch_size=20)
+                    async with simulation.lock:
+                        batch = simulation.buffer.get_batch(max_batch_size=20)
 
                     if not batch:
                         continue
@@ -758,31 +758,31 @@ class FactoryManager:
                         for qe in batch
                     ]
                     delivery_results = await asyncio.to_thread(
-                        factory.producer.publish_batch_sync,
+                        simulation.producer.publish_batch_sync,
                         records,
                     )
 
-                    factory_ok = True
-                    async with factory.lock:
+                    simulation_ok = True
+                    async with simulation.lock:
                         for qe, success in zip(batch, delivery_results):
                             if success:
-                                factory.buffer.acknowledge(qe)
+                                simulation.buffer.acknowledge(qe)
                             else:
                                 qe.in_flight = False
-                                factory_ok = False
+                                simulation_ok = False
 
-                    if factory_ok:
+                    if simulation_ok:
                         # Reset back-off on successful flush
-                        factory.publish_failure_count = 0
-                        factory.publish_next_retry_after = 0.0
+                        simulation.publish_failure_count = 0
+                        simulation.publish_next_retry_after = 0.0
                     else:
                         # Exponential back-off: 0.1s * 2^failures, capped at 5 s
-                        factory.publish_failure_count += 1
-                        delay = min(0.1 * (2 ** factory.publish_failure_count), 5.0)
-                        factory.publish_next_retry_after = time.monotonic() + delay
+                        simulation.publish_failure_count += 1
+                        delay = min(0.1 * (2 ** simulation.publish_failure_count), 5.0)
+                        simulation.publish_next_retry_after = time.monotonic() + delay
                         logger.debug(
-                            f"Factory {factory.factory_id[:8]} publish failed "
-                            f"(attempt {factory.publish_failure_count}); "
+                            f"Simulation {simulation.simulation_id[:8]} publish failed "
+                            f"(attempt {simulation.publish_failure_count}); "
                             f"retry in {delay:.1f}s"
                         )
 

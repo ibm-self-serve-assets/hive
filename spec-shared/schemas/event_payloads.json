@@ -111,7 +111,7 @@
     },
     "manufacturing.resources.acquired": {
       "type": "object",
-      "description": "Emitted every time resources are moved from factory stock into a manufacturing station's staging cart. May fire multiple times per job as stock arrives incrementally. inputs_grabbed is the delta for this transfer only.",
+      "description": "Emitted every time resources are moved from simulation stock into a manufacturing station's staging cart. May fire multiple times per job as stock arrives incrementally. inputs_grabbed is the delta for this transfer only.",
       "required": ["station_id", "inputs_grabbed"],
       "properties": {
         "station_id": {
@@ -125,7 +125,7 @@
         },
         "inputs_grabbed": {
           "type": "object",
-          "description": "Resources removed from factory stock in this transfer (delta, not cumulative).",
+          "description": "Resources removed from simulation stock in this transfer (delta, not cumulative).",
           "additionalProperties": { "type": "integer", "minimum": 1 }
         }
       },
@@ -200,7 +200,7 @@
       },
       "additionalProperties": false
     },
-    "factory.state": {
+    "simulation.state": {
       "type": "object",
       "required": [
         "lifecycle_status",

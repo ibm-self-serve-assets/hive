@@ -20,7 +20,7 @@ except ImportError:
 
 class EventConsumerManager:
     """
-    Consumes factory events from Confluent Cloud and feeds the dashboard store.
+    Consumes simulation events from Confluent Cloud and feeds the dashboard store.
     Identical transport to spec-3; only the store differs.
     """
 
@@ -239,7 +239,7 @@ class InventoryBalancesConsumer:
     quantity per (item_type, item_id).
 
     The topic uses json-registry upsert format; each record is the current balance
-    for one item.  Flink writes the table's primary key (factory_id, run_id,
+    for one item.  Flink writes the table's primary key (simulation_id, run_id,
     item_type, item_id) to the Kafka message *key* and only `quantity` to the value,
     so both must be read.
     """

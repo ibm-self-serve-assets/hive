@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from calculator import (
     CapacityCalculator,
-    FactoryConfiguration,
+    SimulationConfiguration,
     OptimalExpansionSimulator,
     OrderScheduleGenerator,
     StationSlot,

@@ -7,7 +7,7 @@
     "event_id",
     "event_type",
     "schema_version",
-    "factory_id",
+    "simulation_id",
     "server_epoch",
     "run_id",
     "run_generation",
@@ -30,7 +30,7 @@
       "type": "integer",
       "const": 1
     },
-    "factory_id": {
+    "simulation_id": {
       "type": "string",
       "format": "uuid"
     },

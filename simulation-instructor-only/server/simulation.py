@@ -9,7 +9,7 @@ from server.models import (
     StationJobState,
     CompletedWorkersState,
     ResourceDeliveryState,
-    FactoryStatePayload,
+    SimulationStatePayload,
     OperationalError,
     EventEnvelope,
     ResourceStartedPayload,
@@ -53,13 +53,13 @@ class ActiveJob:
 class SimulationRun:
     def __init__(
         self,
-        factory_id: str,
+        simulation_id: str,
         server_epoch: str,
         run_id: Optional[str] = None,
         run_generation: int = 1,
         lifecycle_status: str = "paused",
     ):
-        self.factory_id = factory_id
+        self.simulation_id = simulation_id
         self.server_epoch = server_epoch
         self.run_id = run_id or str(uuid.uuid4())
         self.run_generation = run_generation
@@ -91,7 +91,7 @@ class SimulationRun:
         }
 
         # Staging cart per station: station_id -> {input_name: quantity}. An idle station
-        # moves whatever it can from factory stock into its cart on every scheduling pass,
+        # moves whatever it can from simulation stock into its cart on every scheduling pass,
         # and starts its job (consuming the cart) once the cart holds the whole recipe.
         self.carts: Dict[str, Dict[str, int]] = {}
 
@@ -224,7 +224,7 @@ class SimulationRun:
             event_id=event_id or str(uuid.uuid4()),
             event_type=event_type,
             schema_version=1,
-            factory_id=self.factory_id,
+            simulation_id=self.simulation_id,
             server_epoch=self.server_epoch,
             run_id=self.run_id,
             run_generation=self.run_generation,
@@ -337,7 +337,7 @@ class SimulationRun:
                 event_id=str(uuid.uuid4()),
                 event_type="manufacturing.completed",
                 schema_version=1,
-                factory_id=self.factory_id,
+                simulation_id=self.simulation_id,
                 server_epoch=self.server_epoch,
                 run_id=self.run_id,
                 run_generation=self.run_generation,
@@ -365,7 +365,7 @@ class SimulationRun:
                 event_id=str(uuid.uuid4()),
                 event_type="assembly.completed",
                 schema_version=1,
-                factory_id=self.factory_id,
+                simulation_id=self.simulation_id,
                 server_epoch=self.server_epoch,
                 run_id=self.run_id,
                 run_generation=self.run_generation,
@@ -468,7 +468,7 @@ class SimulationRun:
                         event_id=str(uuid.uuid4()),
                         event_type="manufacturing.resources.acquired",
                         schema_version=1,
-                        factory_id=self.factory_id,
+                        simulation_id=self.simulation_id,
                         server_epoch=self.server_epoch,
                         run_id=self.run_id,
                         run_generation=self.run_generation,
@@ -490,7 +490,7 @@ class SimulationRun:
                             event_id=str(uuid.uuid4()),
                             event_type="manufacturing.blocked",
                             schema_version=1,
-                            factory_id=self.factory_id,
+                            simulation_id=self.simulation_id,
                             server_epoch=self.server_epoch,
                             run_id=self.run_id,
                             run_generation=self.run_generation,
@@ -524,7 +524,7 @@ class SimulationRun:
                         event_id=started_event_id,
                         event_type="manufacturing.started",
                         schema_version=1,
-                        factory_id=self.factory_id,
+                        simulation_id=self.simulation_id,
                         server_epoch=self.server_epoch,
                         run_id=self.run_id,
                         run_generation=self.run_generation,
@@ -587,7 +587,7 @@ class SimulationRun:
                     event_id=str(uuid.uuid4()),
                     event_type="assembly.parts.acquired",
                     schema_version=1,
-                    factory_id=self.factory_id,
+                    simulation_id=self.simulation_id,
                     server_epoch=self.server_epoch,
                     run_id=self.run_id,
                     run_generation=self.run_generation,
@@ -609,7 +609,7 @@ class SimulationRun:
                         event_id=str(uuid.uuid4()),
                         event_type="assembly.blocked",
                         schema_version=1,
-                        factory_id=self.factory_id,
+                        simulation_id=self.simulation_id,
                         server_epoch=self.server_epoch,
                         run_id=self.run_id,
                         run_generation=self.run_generation,
@@ -643,7 +643,7 @@ class SimulationRun:
                     event_id=started_event_id,
                     event_type="assembly.started",
                     schema_version=1,
-                    factory_id=self.factory_id,
+                    simulation_id=self.simulation_id,
                     server_epoch=self.server_epoch,
                     run_id=self.run_id,
                     run_generation=self.run_generation,
@@ -662,7 +662,7 @@ class SimulationRun:
 
         return emitted_events
 
-    def build_snapshot_payload(self, include_debug_inventory: bool = False) -> FactoryStatePayload:
+    def build_snapshot_payload(self, include_debug_inventory: bool = False) -> SimulationStatePayload:
         station_states: List[StationState] = []
 
         for st_id in self.rules.station_order:
@@ -732,7 +732,7 @@ class SimulationRun:
                 )
             )
 
-        payload = FactoryStatePayload(
+        payload = SimulationStatePayload(
             lifecycle_status=self.lifecycle_status,
             running=is_running,
             operational_error=self.operational_error,
@@ -774,9 +774,9 @@ class SimulationRun:
         payload = self.build_snapshot_payload(include_debug_inventory=include_debug_inventory)
         event = EventEnvelope(
             event_id=str(uuid.uuid4()),
-            event_type="factory.state",
+            event_type="simulation.state",
             schema_version=1,
-            factory_id=self.factory_id,
+            simulation_id=self.simulation_id,
             server_epoch=self.server_epoch,
             run_id=self.run_id,
             run_generation=self.run_generation,
@@ -787,4 +787,4 @@ class SimulationRun:
             causation_id=causation_id,
             payload=payload.model_dump(),
         )
-        return (".factory-state", event)
+        return (".simulation-state", event)

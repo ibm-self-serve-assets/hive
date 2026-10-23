@@ -1,6 +1,6 @@
-"""Orders Calculator & Factory Capacity Planning Engine.
+"""Orders Calculator & Simulation Capacity Planning Engine.
 
-Calculates realistic factory throughput, optimal upgrade trajectories,
+Calculates realistic simulation throughput, optimal upgrade trajectories,
 and grounded order generation based on simulation_rules.json.
 """
 
@@ -29,13 +29,13 @@ class StationSlot:
 
 
 @dataclass
-class FactoryConfiguration:
-    resources: Dict[str, List[StationSlot]] = field(default_factory=dict)
-    manufacturing: Dict[str, List[StationSlot]] = field(default_factory=dict)
-    assembly: Dict[str, List[StationSlot]] = field(default_factory=dict)
+class SimulationConfiguration:
+    resources: Dict[str, List[StationSlot]] = field(default_simulation=dict)
+    manufacturing: Dict[str, List[StationSlot]] = field(default_simulation=dict)
+    assembly: Dict[str, List[StationSlot]] = field(default_simulation=dict)
 
-    def clone(self) -> FactoryConfiguration:
-        return FactoryConfiguration(
+    def clone(self) -> SimulationConfiguration:
+        return SimulationConfiguration(
             resources={
                 k: [StationSlot(s.id, s.level) for s in v]
                 for k, v in self.resources.items()
@@ -95,8 +95,8 @@ class CapacityCalculator:
         self.max_sim_days = self.max_sim_weeks * 7
         self.max_sim_minutes = self.max_sim_days * 24 * 60
 
-    def get_initial_configuration(self) -> FactoryConfiguration:
-        config = FactoryConfiguration()
+    def get_initial_configuration(self) -> SimulationConfiguration:
+        config = SimulationConfiguration()
         for r in self.rules.get("resources", []):
             config.resources[r["name"]] = [StationSlot(id=1, level=r.get("level", 1))]
         for m in self.rules.get("manufacturing", []):
@@ -172,7 +172,7 @@ class CapacityCalculator:
         return rate
 
     def analyze_throughput(
-        self, config: FactoryConfiguration
+        self, config: SimulationConfiguration
     ) -> Dict[str, Any]:
         """Calculates theoretical steady-state throughput and identifies bottlenecks."""
         raw_bom = self.get_raw_resources_per_robot("engineer")
@@ -234,7 +234,7 @@ class UpgradeOptimizer:
         self.calc = calculator
 
     def get_candidate_actions(
-        self, config: FactoryConfiguration, available_coins: int
+        self, config: SimulationConfiguration, available_coins: int
     ) -> List[UpgradeAction]:
         current_analysis = self.calc.analyze_throughput(config)
         curr_rate_hr = current_analysis["max_robots_per_hour"]
@@ -434,7 +434,7 @@ class UpgradeOptimizer:
         return candidates
 
     def apply_action(
-        self, config: FactoryConfiguration, action: UpgradeAction
+        self, config: SimulationConfiguration, action: UpgradeAction
     ) -> None:
         attr_name = "resources" if action.category == "resource" else action.category
         target_dict = getattr(config, attr_name)
@@ -446,7 +446,7 @@ class UpgradeOptimizer:
 
 
 class OptimalExpansionSimulator:
-    """Simulates factory expansion and production over the full simulation horizon."""
+    """Simulates simulation expansion and production over the full simulation horizon."""
 
     def __init__(self, calculator: CapacityCalculator):
         self.calc = calculator
@@ -455,7 +455,7 @@ class OptimalExpansionSimulator:
     def simulate_expansion(
         self, total_sim_minutes: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Simulates step-by-step factory growth with greedy optimal upgrade purchases."""
+        """Simulates step-by-step simulation growth with greedy optimal upgrade purchases."""
         sim_limit = total_sim_minutes or self.calc.max_sim_minutes
         config = self.calc.get_initial_configuration()
 
@@ -575,7 +575,7 @@ class OptimalExpansionSimulator:
 
 
 class OrderScheduleGenerator:
-    """Generates realistic and balanced order schedules grounded in factory capacity."""
+    """Generates realistic and balanced order schedules grounded in simulation capacity."""
 
     def __init__(self, calculator: CapacityCalculator):
         self.calc = calculator
@@ -632,7 +632,7 @@ class OrderScheduleGenerator:
             )
         )
 
-        # 3. Periodic orders scaled to factory output for remaining days
+        # 3. Periodic orders scaled to simulation output for remaining days
         # Sample points every 2 simulation days (2880 minutes)
         step_minutes = 2880
         curr_min = 2880
@@ -725,7 +725,7 @@ def print_summary_report(
     # 2. Initial Throughput Analysis
     init_config = calc.get_initial_configuration()
     init_analysis = calc.analyze_throughput(init_config)
-    print("\n2. Initial Factory State (Un-upgraded):")
+    print("\n2. Initial Simulation State (Un-upgraded):")
     print(
         f"   - Bottleneck             : {init_analysis['bottleneck_name']} ({init_analysis['bottleneck_type']})"
     )
@@ -740,7 +740,7 @@ def print_summary_report(
     # 3. 1-Week and 2-Week Expansion Simulations
     for weeks in [1, sim_duration_weeks]:
         minutes = weeks * 7 * 1440
-        print(f"\n3. {weeks}-Week Factory Growth Simulation ({minutes:,} sim minutes):")
+        print(f"\n3. {weeks}-Week Simulation Growth Simulation ({minutes:,} sim minutes):")
         result = sim.simulate_expansion(minutes)
         print(f"   - Total Robots Produced  : {result['total_robots_produced']:,}")
         print(f"   - Final Output Rate      : {result['final_robots_per_hour']:.2f} robots/hour")

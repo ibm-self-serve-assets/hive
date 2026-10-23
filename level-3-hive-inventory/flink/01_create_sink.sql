@@ -4,7 +4,7 @@
 --
 -- WHAT THIS DOES
 --   Creates the `hive_inventory_balances` table.  Flink will maintain one row
---   per (factory_id, run_id, item_id, item_type) holding the current live
+--   per (simulation_id, run_id, item_id, item_type) holding the current live
 --   quantity.  Each row is continuously updated as events arrive.
 --
 -- SCHEMA DESIGN
@@ -37,12 +37,12 @@
 -- =============================================================================
 
 CREATE TABLE `hive_inventory_balances` (
-  `factory_id`  STRING,          -- factory this balance belongs to
-  `run_id`      STRING,          -- simulation run; resets when the factory restarts
+  `simulation_id`  STRING,          -- simulation this balance belongs to
+  `run_id`      STRING,          -- simulation run; resets when the simulation restarts
   `item_type`   STRING,          -- 'resource' | 'part' | 'robot'
   `item_id`     STRING,          -- e.g. 'copper', 'chassis', 'engineer'
   `quantity`    BIGINT,          -- current net stock (always >= 0 in a healthy sim)
-  PRIMARY KEY (`factory_id`, `run_id`, `item_type`, `item_id`) NOT ENFORCED
+  PRIMARY KEY (`simulation_id`, `run_id`, `item_type`, `item_id`) NOT ENFORCED
 )
 WITH (
   'changelog.mode'                 = 'upsert',

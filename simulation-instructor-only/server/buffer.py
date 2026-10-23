@@ -8,13 +8,13 @@ class QueuedEvent:
         self.topic_suffix = topic_suffix
         self.event = event
         self.is_control = is_control
-        self.serialized_key = event.factory_id.encode("utf-8")
+        self.serialized_key = event.simulation_id.encode("utf-8")
         self.serialized_value = json.dumps(event.model_dump()).encode("utf-8")
         self.byte_size = len(self.serialized_key) + len(self.serialized_value)
         self.in_flight = False
 
 
-class FactoryEventBuffer:
+class SimulationEventBuffer:
     def __init__(
         self,
         max_events: int = 10000,
@@ -37,7 +37,7 @@ class FactoryEventBuffer:
         added_events = len(events)
         added_bytes = 0
         for _, ev in events:
-            k = ev.factory_id.encode("utf-8")
+            k = ev.simulation_id.encode("utf-8")
             v = json.dumps(ev.model_dump()).encode("utf-8")
             added_bytes += len(k) + len(v)
 

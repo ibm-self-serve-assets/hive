@@ -2,7 +2,7 @@
 
 ## Preparation model
 
-For the first workshop, organizer-managed Confluent infrastructure is recommended. Precreate an assigned namespace per attendee: nine activity topics and one compacted factory-state topic. Provide explicit topic and consumer-group permissions. Record the allowed bootstrap endpoint and namespace in the Simulation Server enrollment configuration.
+For the first workshop, organizer-managed Confluent infrastructure is recommended. Precreate an assigned namespace per attendee: nine activity topics and one compacted simulation-state topic. Provide explicit topic and consumer-group permissions. Record the allowed bootstrap endpoint and namespace in the Simulation Server enrollment configuration.
 
 Each producer key needs describe/write access to its ten topics. Each local consumer key needs describe/read access and permission to use its assigned consumer-group prefix. Separate keys are preferred. A pilot may use one attendee-scoped pair with both permissions; document that such a key can publish forged events into that attendee's own view. It is not suitable for a trustworthy competitive leaderboard. Never distribute a shared cohort-wide key.
 

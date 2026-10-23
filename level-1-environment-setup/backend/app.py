@@ -137,28 +137,28 @@ async def auto_connect():
             epoch = r.json().get("server_epoch")
             store.server_epoch = epoch
 
-            # Find or provision factory
+            # Find or provision simulation
             topics_map: Dict[str, str] = {}
-            f_resp = await client.get(f"{config.simulation_server_url}/v1/factories", headers=headers)
+            f_resp = await client.get(f"{config.simulation_server_url}/v1/simulations", headers=headers)
             if f_resp.status_code == 200:
-                facts = f_resp.json().get("factories", [])
+                facts = f_resp.json().get("simulations", [])
                 if facts:
                     f0 = facts[0]
                     if f0.get("lifecycle_status") == "expired":
-                        logger.info(f"AUTO-CONNECT: Factory {f0['factory_id'][:8]} is expired; will provision fresh factory")
-                        store.active_factory_id = None
+                        logger.info(f"AUTO-CONNECT: Simulation {f0['simulation_id'][:8]} is expired; will provision fresh simulation")
+                        store.active_simulation_id = None
                     else:
-                        store.active_factory_id = f0["factory_id"]
+                        store.active_simulation_id = f0["simulation_id"]
                         store.server_epoch = f0["server_epoch"]
                         store.lifecycle_status = f0.get("lifecycle_status", store.lifecycle_status)
                         store.running = f0.get("running", store.running)
                         topics_map = f0.get("topics", {})
-                        logger.info(f"AUTO-CONNECT: Reconnected to factory {f0['factory_id'][:8]}…")
+                        logger.info(f"AUTO-CONNECT: Reconnected to simulation {f0['simulation_id'][:8]}…")
 
-            if not store.active_factory_id:
-                logger.info("AUTO-CONNECT: Provisioning new factory…")
+            if not store.active_simulation_id:
+                logger.info("AUTO-CONNECT: Provisioning new simulation…")
                 prov_r = await client.post(
-                    f"{config.simulation_server_url}/v1/factories",
+                    f"{config.simulation_server_url}/v1/simulations",
                     json={
                         "bootstrap_server": config.confluent_bootstrap_server,
                         "producer_credentials": {
@@ -174,15 +174,15 @@ async def auto_connect():
                 )
                 prov_r.raise_for_status()
                 prov_data = prov_r.json()
-                store.active_factory_id = prov_data["factory_id"]
+                store.active_simulation_id = prov_data["simulation_id"]
                 store.reset()
-                logger.info(f"AUTO-CONNECT: Factory provisioned {store.active_factory_id[:8]}… waiting for probe verification")
+                logger.info(f"AUTO-CONNECT: Simulation provisioned {store.active_simulation_id[:8]}… waiting for probe verification")
 
                 # Poll until verification probes pass and lifecycle leaves 'provisioning'
                 for _ in range(30):  # poll up to 6 seconds (30 * 200ms)
                     await asyncio.sleep(0.2)
                     fdetail_r = await client.get(
-                        f"{config.simulation_server_url}/v1/factories/{store.active_factory_id}",
+                        f"{config.simulation_server_url}/v1/simulations/{store.active_simulation_id}",
                         headers=headers,
                     )
                     if fdetail_r.status_code == 200:
@@ -192,7 +192,7 @@ async def auto_connect():
                             topics_map = fdata.get("topics", {})
                             store.lifecycle_status = status
                             store.running = (status == "running")
-                            logger.info(f"AUTO-CONNECT: Factory ready with status '{status}'")
+                            logger.info(f"AUTO-CONNECT: Simulation ready with status '{status}'")
                             break
 
             if topics_map:
@@ -285,18 +285,18 @@ async def send_control(
     if req.command not in ("start", "pause", "stop", "restart"):
         raise HTTPException(status_code=422, detail="Invalid command")
 
-    if not store.active_factory_id:
+    if not store.active_simulation_id:
         if req.command == "restart":
-            logger.info("Restart requested with no active factory; provisioning fresh factory...")
+            logger.info("Restart requested with no active simulation; provisioning fresh simulation...")
             await auto_connect()
-            if not store.active_factory_id:
-                raise HTTPException(status_code=500, detail={"error_code": "provision_failed", "message": "Failed to provision new factory"})
+            if not store.active_simulation_id:
+                raise HTTPException(status_code=500, detail={"error_code": "provision_failed", "message": "Failed to provision new simulation"})
             if req.start is not False:
                 return await _send_server_command("start")
-            return {"lifecycle_status": store.lifecycle_status, "factory_id": store.active_factory_id}
-        raise HTTPException(status_code=400, detail={"error_code": "not_connected", "message": "No active factory"})
+            return {"lifecycle_status": store.lifecycle_status, "simulation_id": store.active_simulation_id}
+        raise HTTPException(status_code=400, detail={"error_code": "not_connected", "message": "No active simulation"})
 
-    cmd_url = f"{config.simulation_server_url}/v1/factories/{store.active_factory_id}/{req.command}"
+    cmd_url = f"{config.simulation_server_url}/v1/simulations/{store.active_simulation_id}/{req.command}"
     headers = {
         "Authorization": f"Bearer {config.workshop_access_token}",
         "Idempotency-Key": str(uuid.uuid4()),
@@ -313,11 +313,11 @@ async def send_control(
     async with httpx.AsyncClient(timeout=8.0) as client:
         r = await client.post(cmd_url, json=body, headers=headers)
         if (r.status_code in (404, 409)) or (r.status_code == 410 and req.command == "restart"):
-            logger.info(f"Server returned {r.status_code}; refreshing connection and active factory...")
-            store.active_factory_id = None
+            logger.info(f"Server returned {r.status_code}; refreshing connection and active simulation...")
+            store.active_simulation_id = None
             await auto_connect()
-            if not store.active_factory_id:
-                raise HTTPException(status_code=500, detail={"error_code": "provision_failed", "message": "Failed to re-sync factory after server reload/restart"})
+            if not store.active_simulation_id:
+                raise HTTPException(status_code=500, detail={"error_code": "provision_failed", "message": "Failed to re-sync simulation after server reload/restart"})
             target_cmd = "start" if (req.command == "restart" and req.start is not False) or req.command == "start" else req.command
             return await _send_server_command(target_cmd)
 
@@ -337,7 +337,7 @@ async def send_control(
 
 
 async def _send_server_command(command: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    cmd_url = f"{config.simulation_server_url}/v1/factories/{store.active_factory_id}/{command}"
+    cmd_url = f"{config.simulation_server_url}/v1/simulations/{store.active_simulation_id}/{command}"
     headers = {
         "Authorization": f"Bearer {config.workshop_access_token}",
         "Idempotency-Key": str(uuid.uuid4()),

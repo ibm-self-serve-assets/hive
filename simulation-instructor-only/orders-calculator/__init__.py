@@ -3,7 +3,7 @@
 try:
     from .calculator import (
         CapacityCalculator,
-        FactoryConfiguration,
+        SimulationConfiguration,
         OptimalExpansionSimulator,
         Order,
         OrderScheduleGenerator,
@@ -15,7 +15,7 @@ try:
 except ImportError:
     from calculator import (  # type: ignore
         CapacityCalculator,
-        FactoryConfiguration,
+        SimulationConfiguration,
         OptimalExpansionSimulator,
         Order,
         OrderScheduleGenerator,
@@ -28,7 +28,7 @@ except ImportError:
 __all__ = [
     "load_rules",
     "StationSlot",
-    "FactoryConfiguration",
+    "SimulationConfiguration",
     "UpgradeAction",
     "Order",
     "CapacityCalculator",
