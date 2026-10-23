@@ -290,9 +290,11 @@ When the dashboard loads, you will see the **Hive Robotics** interface.  The con
 
 The sidebar shows **Connected** and your Simulation ID, and the simulation controls, including **Run**, are visible. Every counter reads zero because your simulation is paused. Continue to [Step 8](#step-8-run-your-simulation) to run your simulation and watch its events arrive.
 
+<img src="assets/level_1_dashboard.png" width="65%" />
+
 If you see a **Level 1 is locked** warning like the one below instead, one or more of your topics are missing from your Confluent Cloud cluster. Re-run [Step 4](#step-4-provision-your-kafka-topics) and the warning clears once every topic exists. If **Run** still doesn't work afterwards, ask your instructor to reset your simulation.
 
-<img src="assets/level_0_dashboard.png" width="65%" />
+<img src="assets/level_1_error.png" width="65%" />
 
 ---
 
@@ -303,7 +305,9 @@ Using the controls in the sidebar of your Dashboard, you can start, pause, stop 
 1. **Dashboard Backend**: Connects to Confluent Cloud via `confluent-kafka` and streams raw events (`*.started`, `*.completed`, `simulation.state`) to the frontend over Server-Sent Events (SSE).
 2. **Dashboard Frontend**: Displays the real-time simulation floor, active/completed counters, sim clock (`Day X, HH:MM`), and simulation lifecycle controls (Run, Pause, Stop, Restart).
 
-With **Level 1** selected in the Levels dropdown, click **Run** in the simulation controls.
+With **Level 1** selected in the Levels dropdown, click **Run** in the simulation controls.  
+
+If you select the other levels, you will see warnings that they are not yet available to you.
 
 ### Validation & Acceptance Criteria
 
