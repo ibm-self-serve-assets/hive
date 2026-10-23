@@ -181,6 +181,25 @@ Do not copy recipe quantities, delivery intervals or durations into these notes.
 6. [ ] **Tableflow Runbook** (see "Level numbering" above for which level this is): Iceberg sync and data lakehouse integration instructions for both `hive_job_durations` and `hive_inventory_balances`.
 7. [x] **Fix `simulation-instructor-only/tests/test_api.py`**: import error on `topics`. Cause: `topics.py` lives in `spec-shared/`, which only `start_server.sh` added to `PYTHONPATH`. Fixed with `simulation-instructor-only/pytest.ini` (`pythonpath = . ../spec-shared`).
 8. [ ] **Deploy the simulation server on Google Cloud Run, then load test it for 150 users.** Details in "Cloud Run deployment and load test" below.
+9. [ ] **Move the simulation server to a separate repo, then deploy it to Google Cloud Run.** Do this before item 8's deploy step, so Cloud Run is set up from the new repo. Details in "Move the simulation server to its own repo" below.
+
+## Move the simulation server to its own repo
+
+Move `simulation-instructor-only/` out of this repo into a separate repo, then deploy it to Google Cloud Run (see "Cloud Run deployment and load test" below). The server is instructor-only, so a separate repo also keeps the hidden state and answer key out of the attendee repo.
+
+- [ ] Create the new repo and decide its name and visibility (private, since it holds the answer key).
+- [ ] Move the folder, keeping git history if possible (for example `git filter-repo --path simulation-instructor-only`).
+- [ ] **Resolve the `spec-shared/` dependency.** The server imports `topics` from `spec-shared/` (`server/producer.py`, `server/simulation_manager.py`) and reads its schemas. These files currently depend on the sibling folder:
+  - `start_server.sh` and `pytest.ini` (`PYTHONPATH` / `pythonpath` include `../spec-shared`)
+  - `Dockerfile` (`COPY ../spec_shared/`, which is also broken, see Cloud Run item below)
+  - `tests/test_schema_validation.py` and `specifications/scripts/setup_validation.py` (path to `spec-shared/schemas`)
+  - Decide how the two repos share `spec-shared/`: a copy with a sync step, a git submodule, or a published package. Keep one source of truth (see Working agreements).
+- [ ] Update the paths above to match the decision.
+- [ ] Update references in this repo: Working agreements, "Sources of truth", "Current state" and the level docs that point at `simulation-instructor-only/`, plus `Hive_Workshop_Overview.md`.
+- [ ] Check the new repo's `.gitignore` still excludes `.env` and `.venv`, and that no secrets are carried over.
+- [ ] Add CI in the new repo that runs the tests (`python3 -m pytest`).
+- [ ] Deploy the new repo to Google Cloud Run (the Cloud Run section below).
+- [ ] Remove `simulation-instructor-only/` from this repo once the new repo and the deployment are verified.
 
 ## Cloud Run deployment and load test
 
